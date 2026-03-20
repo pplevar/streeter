@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Streeter</string>
+    <string name="notification_channel_recording">Walk Recording</string>
+    <string name="notification_recording_title">Recording walk…</string>
+    <string name="notification_recording_text">GPS is active. Tap to return to Streeter.</string>
+    <string name="permission_location_rationale">Streeter needs location permission to record your walk route.</string>
+    <string name="permission_background_rationale">Background location lets Streeter record your route while your screen is off.</string>
+    <string name="label_start_walk">Start Walk</string>
+    <string name="label_stop_walk">Stop Walk</string>
+    <string name="label_history">History</string>
+    <string name="label_create_manual">Create Manual Walk</string>
+    <string name="label_edit_route">Edit Route</string>
+    <string name="label_save">Save</string>
+    <string name="label_discard">Discard</string>
+    <string name="label_undo">Undo</string>
+    <string name="label_delete">Delete</string>
+    <string name="label_cancel">Cancel</string>
+    <string name="label_confirm">Confirm</string>
+    <string name="label_processing">Processing route…</string>
+    <string name="label_manual_badge">Manual</string>
+    <string name="label_no_walks">No walks yet. Start your first walk!</string>
+    <string name="error_location_unavailable">Location unavailable. Check permissions.</string>
+    <string name="error_route_processing_failed">Route processing failed. Tap to retry.</string>
+    <string name="map_content_description">Map showing walk route</string>
+    <string name="coverage_pct_format">%.0f%% covered</string>
+    <string name="walk_preparing_map_data">Preparing map data… (first launch only)</string>
+</resources>
