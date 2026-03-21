@@ -46,6 +46,11 @@ class GraphHopperEngine @Inject constructor(
 
                     // Copy PBF from assets on first run
                     if (!osmFile.exists()) {
+                        if (!assetExists("osm/city.osm.pbf")) {
+                            throw java.io.FileNotFoundException(
+                                "osm/city.osm.pbf not bundled — map matching unavailable"
+                            )
+                        }
                         Timber.i("Copying OSM PBF from assets…")
                         copyAssetToFile("osm/city.osm.pbf", osmFile)
                     }
@@ -62,8 +67,12 @@ class GraphHopperEngine @Inject constructor(
                     mapMatching = MapMatching.fromGraphHopper(gh, PMap())
                     initialized = true
                     Timber.i("GraphHopper initialized successfully")
+                } catch (e: java.io.FileNotFoundException) {
+                    Timber.w("GraphHopper: %s", e.message)
+                    throw e
                 } catch (e: Exception) {
                     Timber.e(e, "GraphHopper initialization failed")
+                    throw e
                 }
             }
         }
@@ -135,6 +144,13 @@ class GraphHopperEngine @Inject constructor(
         val coords = points.map { "[${it.lon},${it.lat}]" }.joinToString(",")
         return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
     }
+
+    private fun assetExists(assetPath: String): Boolean =
+        try {
+            context.assets.open(assetPath).use { true }
+        } catch (_: java.io.FileNotFoundException) {
+            false
+        }
 
     private fun copyAssetToFile(assetPath: String, dest: File) {
         dest.parentFile?.mkdirs()

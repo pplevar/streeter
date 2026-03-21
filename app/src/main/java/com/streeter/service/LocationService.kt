@@ -11,16 +11,20 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import androidx.work.WorkManager
 import com.google.android.gms.location.*
 import com.streeter.MainActivity
 import com.streeter.R
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.JobStatus
+import com.streeter.domain.model.PendingMatchJob
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.work.MapMatchingWorker
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -35,7 +39,11 @@ class LocationService : LifecycleService() {
     companion object {
         const val ACTION_START_WALK = "com.streeter.ACTION_START_WALK"
         const val ACTION_STOP_WALK = "com.streeter.ACTION_STOP_WALK"
+        const val ACTION_RESUME_WALK = "com.streeter.ACTION_RESUME_WALK"
+        const val EXTRA_WALK_ID = "com.streeter.EXTRA_WALK_ID"
         private const val NOTIFICATION_ID = 1001
+
+        @Volatile var isRunning = false
         private const val CHANNEL_ID = "streeter_recording"
         private const val FLUSH_BATCH_SIZE = 50
     }
@@ -44,12 +52,17 @@ class LocationService : LifecycleService() {
     @Inject lateinit var gpsPointRepository: GpsPointRepository
     @Inject lateinit var pendingMatchJobRepository: PendingMatchJobRepository
 
+    // Lazily obtained to avoid triggering WorkManager initialization during Hilt setup
+    private val workManager by lazy { WorkManager.getInstance(applicationContext) }
+
     private val binder = LocalBinder()
     private var fusedClient: FusedLocationProviderClient? = null
     private var locationCallback: LocationCallback? = null
     private var wakeLock: PowerManager.WakeLock? = null
 
     private var currentWalkId: Long = -1L
+
+    fun getCurrentWalkId(): Long = currentWalkId
     private var lastKeptPoint: GpsPoint? = null
     private val pendingPoints = mutableListOf<GpsPoint>()
     private var maxSpeedKmh: Float = 50f
@@ -65,6 +78,11 @@ class LocationService : LifecycleService() {
         fun getService(): LocationService = this@LocationService
     }
 
+    override fun onCreate() {
+        super.onCreate()
+        isRunning = true
+    }
+
     override fun onBind(intent: Intent): IBinder {
         super.onBind(intent)
         return binder
@@ -75,6 +93,10 @@ class LocationService : LifecycleService() {
         when (intent?.action) {
             ACTION_START_WALK -> startWalk()
             ACTION_STOP_WALK -> stopWalk()
+            ACTION_RESUME_WALK -> {
+                val walkId = intent.getLongExtra(EXTRA_WALK_ID, -1L)
+                if (walkId != -1L) resumeWalk(walkId)
+            }
         }
         return START_STICKY
     }
@@ -105,13 +127,24 @@ class LocationService : LifecycleService() {
         }
     }
 
+    private fun resumeWalk(walkId: Long) {
+        if (_isRecording.value) return
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, buildNotification())
+        currentWalkId = walkId
+        _isRecording.value = true
+        startLocationUpdates()
+        Timber.d("Walk resumed, id=$walkId")
+    }
+
     private fun stopWalk() {
         if (!_isRecording.value) return
         stopLocationUpdates()
         lifecycleScope.launch {
             flushPoints()
             if (currentWalkId != -1L) {
-                val walk = walkRepository.getWalkById(currentWalkId)
+                val walkId = currentWalkId
+                val walk = walkRepository.getWalkById(walkId)
                 walk?.let {
                     val now = System.currentTimeMillis()
                     walkRepository.updateWalk(
@@ -122,14 +155,24 @@ class LocationService : LifecycleService() {
                         )
                     )
                 }
-                Timber.d("Walk stopped, id=$currentWalkId → PENDING_MATCH")
+                pendingMatchJobRepository.enqueue(
+                    PendingMatchJob(
+                        walkId = walkId,
+                        queuedAt = System.currentTimeMillis(),
+                        status = JobStatus.QUEUED,
+                        retryCount = 0,
+                        lastError = null
+                    )
+                )
+                workManager.enqueue(MapMatchingWorker.buildRequest(walkId))
+                Timber.d("Walk stopped, id=$walkId → PENDING_MATCH, worker enqueued")
             }
             currentWalkId = -1L
             _isRecording.value = false
             lastKeptPoint = null
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
         }
-        stopForeground(STOP_FOREGROUND_REMOVE)
-        stopSelf()
     }
 
     private fun startLocationUpdates() {
@@ -234,6 +277,7 @@ class LocationService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        isRunning = false
         stopLocationUpdates()
         super.onDestroy()
     }

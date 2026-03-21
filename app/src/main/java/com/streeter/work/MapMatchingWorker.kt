@@ -52,23 +52,22 @@ class MapMatchingWorker @AssistedInject constructor(
             pendingMatchJobRepository.updateJob(it.copy(status = JobStatus.IN_PROGRESS))
         }
 
-        // Ensure engine is ready
-        if (!routingEngine.isReady()) {
-            routingEngine.initialize()
-        }
-
-        val segments = routeSegmentRepository.getSegmentsForWalk(walkId)
-        if (segments.isEmpty()) {
-            Timber.w("No route segments found for walk=$walkId")
-            pendingMatchJobRepository.getJobForWalk(walkId)?.let {
-                pendingMatchJobRepository.updateJob(
-                    it.copy(status = JobStatus.FAILED, lastError = "No route segments")
-                )
-            }
-            return@withContext Result.failure()
-        }
-
         return@withContext try {
+            // Ensure engine is ready
+            if (!routingEngine.isReady()) {
+                routingEngine.initialize()
+            }
+
+            val segments = routeSegmentRepository.getSegmentsForWalk(walkId)
+            if (segments.isEmpty()) {
+                Timber.w("No route segments found for walk=$walkId")
+                pendingMatchJobRepository.getJobForWalk(walkId)?.let {
+                    pendingMatchJobRepository.updateJob(
+                        it.copy(status = JobStatus.FAILED, lastError = "No route segments")
+                    )
+                }
+                return@withContext Result.failure()
+            }
             val segment = segments.first()
             val wayIds = parseWayIds(segment.matchedWayIds)
 
@@ -91,6 +90,21 @@ class MapMatchingWorker @AssistedInject constructor(
             }
 
             Timber.i("MapMatchingWorker completed for walk=$walkId")
+            Result.success()
+        } catch (e: java.io.FileNotFoundException) {
+            // Engine assets are missing (e.g. OSM PBF not bundled). This won't resolve
+            // on retry, so complete the walk without coverage data.
+            Timber.w("MapMatchingWorker: engine assets missing for walk=$walkId, completing without coverage")
+            walkRepository.getWalkById(walkId)?.let { walk ->
+                walkRepository.updateWalk(
+                    walk.copy(status = WalkStatus.COMPLETED, updatedAt = System.currentTimeMillis())
+                )
+            }
+            pendingMatchJobRepository.getJobForWalk(walkId)?.let {
+                pendingMatchJobRepository.updateJob(
+                    it.copy(status = JobStatus.DONE, lastError = "No map assets: ${e.message}")
+                )
+            }
             Result.success()
         } catch (e: Exception) {
             Timber.e(e, "MapMatchingWorker failed for walk=$walkId")

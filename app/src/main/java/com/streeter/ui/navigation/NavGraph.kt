@@ -7,9 +7,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
+import com.streeter.ui.detail.WalkDetailScreen
+import com.streeter.ui.edit.RouteEditScreen
 import com.streeter.ui.history.HistoryScreen
 import com.streeter.ui.home.HomeScreen
+import com.streeter.ui.manual.ManualCreateScreen
+import com.streeter.ui.privacy.PrivacyDisclosureScreen
 import com.streeter.ui.recording.RecordingScreen
+import com.streeter.ui.settings.SettingsScreen
 
 @Composable
 fun StreeterNavGraph(navController: NavHostController) {
@@ -19,7 +24,8 @@ fun StreeterNavGraph(navController: NavHostController) {
             HomeScreen(
                 onStartWalk = { navController.navigate(Screen.Recording.route) },
                 onViewHistory = { navController.navigate(Screen.History.route) },
-                onCreateManual = { navController.navigate(Screen.ManualCreate.route) }
+                onCreateManual = { navController.navigate(Screen.ManualCreate.route) },
+                onOpenSettings = { navController.navigate(Screen.Settings.route) }
             )
         }
 
@@ -37,7 +43,8 @@ fun StreeterNavGraph(navController: NavHostController) {
             HistoryScreen(
                 onWalkSelected = { walkId ->
                     navController.navigate(Screen.WalkDetail.createRoute(walkId))
-                }
+                },
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 
@@ -45,13 +52,12 @@ fun StreeterNavGraph(navController: NavHostController) {
             route = Screen.WalkDetail.route,
             arguments = listOf(navArgument("walkId") { type = NavType.LongType }),
             deepLinks = listOf(navDeepLink { uriPattern = "streeter://walk/{walkId}" })
-        ) { backStackEntry ->
-            val walkId = backStackEntry.arguments?.getLong("walkId") ?: return@composable
-            // WalkDetailScreen placeholder — implemented in Phase 7
-            HomeScreen(
-                onStartWalk = {},
-                onViewHistory = { navController.popBackStack() },
-                onCreateManual = {}
+        ) {
+            WalkDetailScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onEditRoute = { walkId ->
+                    navController.navigate(Screen.RouteEdit.createRoute(walkId))
+                }
             )
         }
 
@@ -59,21 +65,36 @@ fun StreeterNavGraph(navController: NavHostController) {
             route = Screen.RouteEdit.route,
             arguments = listOf(navArgument("walkId") { type = NavType.LongType }),
             deepLinks = listOf(navDeepLink { uriPattern = "streeter://walk/{walkId}/edit" })
-        ) { backStackEntry ->
-            // RouteEditScreen placeholder — implemented in Phase 5
-            HomeScreen(
-                onStartWalk = {},
-                onViewHistory = { navController.popBackStack() },
-                onCreateManual = {}
+        ) {
+            RouteEditScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 
         composable(Screen.ManualCreate.route) {
-            // ManualCreateScreen placeholder — implemented in Phase 6
-            HomeScreen(
-                onStartWalk = {},
-                onViewHistory = { navController.popBackStack() },
-                onCreateManual = {}
+            ManualCreateScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onWalkCreated = { walkId ->
+                    navController.navigate(Screen.RouteEdit.createRoute(walkId)) {
+                        popUpTo(Screen.ManualCreate.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(Screen.Settings.route) {
+            SettingsScreen(
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(Screen.Privacy.route) {
+            PrivacyDisclosureScreen(
+                onAccept = {
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Privacy.route) { inclusive = true }
+                    }
+                }
             )
         }
     }

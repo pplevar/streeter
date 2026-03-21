@@ -46,17 +46,13 @@
             android:foregroundServiceType="location"
             android:exported="false" />
 
-        <!-- WorkManager uses Configuration.Provider in StreeterApp; disable auto-init -->
+        <!-- Disable Startup library entirely so WorkManager does not auto-initialize;
+             StreeterApp.onCreate() initializes WorkManager with HiltWorkerFactory. -->
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
             android:exported="false"
-            tools:node="merge">
-            <meta-data
-                android:name="androidx.work.impl.WorkManagerInitializer"
-                android:value="androidx.startup"
-                tools:node="remove" />
-        </provider>
+            tools:node="remove" />
 
     </application>
 </manifest>

@@ -11,4 +11,6 @@ sealed class Screen(val route: String) {
         fun createRoute(walkId: Long) = "route_edit/$walkId"
     }
     data object ManualCreate : Screen("manual_create")
+    data object Settings : Screen("settings")
+    data object Privacy : Screen("privacy")
 }
