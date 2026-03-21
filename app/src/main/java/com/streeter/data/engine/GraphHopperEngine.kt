@@ -5,6 +5,7 @@ import com.graphhopper.GHRequest
 import com.graphhopper.GHResponse
 import com.graphhopper.GraphHopper
 import com.graphhopper.config.CHProfile
+import com.graphhopper.util.PMap
 import com.graphhopper.config.Profile
 import com.graphhopper.matching.MapMatching
 import com.graphhopper.matching.Observation
@@ -50,15 +51,15 @@ class GraphHopperEngine @Inject constructor(
                     }
 
                     val gh = GraphHopper().apply {
-                        osmFile = osmFile.absolutePath
+                        setOSMFile(osmFile.absolutePath)
                         graphHopperLocation = graphDir.absolutePath
-                        setProfiles(Profile("foot").setVehicle("foot").setWeighting("fastest"))
+                        setProfiles(Profile("foot").setWeighting("fastest"))
                         chPreparationHandler.setCHProfiles(CHProfile("foot"))
                         importOrLoad()
                     }
 
                     hopper = gh
-                    mapMatching = MapMatching.fromGraphHopper(gh)
+                    mapMatching = MapMatching.fromGraphHopper(gh, PMap())
                     initialized = true
                     Timber.i("GraphHopper initialized successfully")
                 } catch (e: Exception) {
@@ -104,6 +105,7 @@ class GraphHopperEngine @Inject constructor(
                     addPoint(com.graphhopper.util.shapes.GHPoint(to.lat, to.lng))
                     profile = "foot"
                     putHint("calc_points", true)
+                    setPathDetails(listOf("edge_id"))
                 }
                 val response: GHResponse = hopper!!.route(request)
                 if (response.hasErrors()) {
@@ -111,7 +113,7 @@ class GraphHopperEngine @Inject constructor(
                 }
                 val best = response.best
                 val geometry = buildRouteLineString(best.points)
-                val wayIds = best.calcEdges().map { it.edge.toLong() }
+                val wayIds = best.getPathDetails()["edge_id"]?.map { (it.value as Number).toLong() } ?: emptyList()
                 Result.success(RouteResult(
                     geometryJson = geometry,
                     distanceM = best.distance,
@@ -125,17 +127,12 @@ class GraphHopperEngine @Inject constructor(
     }
 
     private fun buildMatchedLineString(result: com.graphhopper.matching.MatchResult): String {
-        val points = result.mergedPath.calcPoints()
-        val coords = (0 until points.size).joinToString(",") { i ->
-            "[${points.getLon(i)},${points.getLat(i)}]"
-        }
+        val coords = result.mergedPath.calcPoints().map { "[${it.lon},${it.lat}]" }.joinToString(",")
         return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
     }
 
     private fun buildRouteLineString(points: com.graphhopper.util.PointList): String {
-        val coords = (0 until points.size).joinToString(",") { i ->
-            "[${points.getLon(i)},${points.getLat(i)}]"
-        }
+        val coords = points.map { "[${it.lon},${it.lat}]" }.joinToString(",")
         return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
     }
 

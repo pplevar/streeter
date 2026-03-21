@@ -84,6 +84,7 @@ dependencies {
 
     // GraphHopper
     implementation(libs.graphhopper.core)
+    implementation(libs.graphhopper.map.matching)
 
     // WorkManager
     implementation(libs.work.runtime)
