@@ -45,12 +45,18 @@ private const val GPS_ROUTE_SOURCE = "gps_route_source"
 private const val GPS_ROUTE_LAYER = "gps_route_layer"
 private const val POSITION_SOURCE = "position_source"
 private const val POSITION_LAYER = "position_layer"
+private const val ROUTE_JSON_SOURCE = "route_json_source"
+private const val ROUTE_JSON_LAYER = "route_json_layer"
+private const val PREVIEW_SOURCE = "preview_source"
+private const val PREVIEW_LAYER = "preview_layer"
 
 @Composable
 fun MapLibreMapView(
     modifier: Modifier = Modifier,
     styleUrl: String,
     gpsPoints: List<GpsPoint> = emptyList(),
+    routeGeometryJson: String? = null,
+    previewGeometryJson: String? = null,
     followLocation: Boolean = false,
     showCurrentPosition: Boolean = false,
     onMapReady: (MapLibreMap) -> Unit = {},
@@ -58,6 +64,14 @@ fun MapLibreMapView(
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
+
+    // rememberUpdatedState ensures async callbacks (getMapAsync/setStyle) always
+    // see the latest parameter values, regardless of when they fire.
+    val latestGpsPoints = rememberUpdatedState(gpsPoints)
+    val latestRouteJson = rememberUpdatedState(routeGeometryJson)
+    val latestPreviewJson = rememberUpdatedState(previewGeometryJson)
+    val latestShowCurrentPosition = rememberUpdatedState(showCurrentPosition)
+    val latestFollowLocation = rememberUpdatedState(followLocation)
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -99,6 +113,11 @@ fun MapLibreMapView(
                     }
                     map.setStyle(styleBuilder) { style ->
                         setupRouteLayers(style)
+                        // Apply whatever geometry is already loaded — handles the common
+                        // case where the DB finishes before the map style does.
+                        updateRouteLayer(map, latestGpsPoints.value)
+                        updateRouteJsonLayer(map, latestRouteJson.value)
+                        updatePreviewLayer(map, latestPreviewJson.value)
                         onMapReady(map)
                     }
                     onMapClick?.let { callback ->
@@ -113,11 +132,14 @@ fun MapLibreMapView(
         modifier = modifier,
         update = { _ ->
             val map = mapLibreMap ?: return@AndroidView
+            // Sources may not exist yet if style hasn't loaded; each helper returns early if so.
             updateRouteLayer(map, gpsPoints)
+            updateRouteJsonLayer(map, routeGeometryJson)
+            updatePreviewLayer(map, previewGeometryJson)
             if (showCurrentPosition) {
                 updatePositionLayer(map, gpsPoints)
             }
-            if (followLocation && gpsPoints.isNotEmpty()) {
+            if (latestFollowLocation.value && gpsPoints.isNotEmpty()) {
                 val last = gpsPoints.last()
                 map.animateCamera(
                     org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
@@ -152,6 +174,24 @@ private fun setupRouteLayers(style: Style) {
                 circleStrokeWidth(2f)
             )
         )
+        style.addSource(GeoJsonSource(ROUTE_JSON_SOURCE))
+        style.addLayer(
+            LineLayer(ROUTE_JSON_LAYER, ROUTE_JSON_SOURCE).withProperties(
+                lineColor("#3B82F6"),
+                lineWidth(4f),
+                lineCap("round"),
+                lineJoin("round")
+            )
+        )
+        style.addSource(GeoJsonSource(PREVIEW_SOURCE))
+        style.addLayer(
+            LineLayer(PREVIEW_LAYER, PREVIEW_SOURCE).withProperties(
+                lineColor("#F59E0B"),
+                lineWidth(4f),
+                lineCap("round"),
+                lineJoin("round")
+            )
+        )
     } catch (e: Exception) {
         Timber.e(e, "Failed to set up route layers")
     }
@@ -176,6 +216,41 @@ private fun updatePositionLayer(map: MapLibreMap, points: List<GpsPoint>) {
 fun buildLineStringGeoJson(points: List<GpsPoint>): String {
     val coords = points.joinToString(",") { "[${it.lng},${it.lat}]" }
     return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
+}
+
+private fun updateRouteJsonLayer(map: MapLibreMap, geojson: String?) {
+    val style = map.style ?: return
+    val source = style.getSourceAs<GeoJsonSource>(ROUTE_JSON_SOURCE) ?: return
+    if (geojson != null) {
+        source.setGeoJson(geojson)
+    }
+}
+
+private fun updatePreviewLayer(map: MapLibreMap, geojson: String?) {
+    val style = map.style ?: return
+    val source = style.getSourceAs<GeoJsonSource>(PREVIEW_SOURCE) ?: return
+    source.setGeoJson(
+        geojson ?: """{"type":"FeatureCollection","features":[]}"""
+    )
+}
+
+fun fitBoundsToGeometryJson(map: MapLibreMap, geojson: String) {
+    try {
+        val feature = org.json.JSONObject(geojson)
+        val geometry = feature.optJSONObject("geometry") ?: return
+        val coordinates = geometry.optJSONArray("coordinates") ?: return
+        if (coordinates.length() == 0) return
+        val builder = LatLngBounds.Builder()
+        for (i in 0 until coordinates.length()) {
+            val coord = coordinates.getJSONArray(i)
+            builder.include(LatLng(coord.getDouble(1), coord.getDouble(0)))
+        }
+        map.animateCamera(
+            org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(builder.build(), 64)
+        )
+    } catch (e: Exception) {
+        Timber.e(e, "Failed to fit bounds to geometry JSON")
+    }
 }
 
 fun fitBoundsToPoints(map: MapLibreMap, points: List<GpsPoint>) {

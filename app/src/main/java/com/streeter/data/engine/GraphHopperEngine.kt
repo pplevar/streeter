@@ -4,7 +4,6 @@ import android.content.Context
 import com.graphhopper.GHRequest
 import com.graphhopper.GHResponse
 import com.graphhopper.GraphHopper
-import com.graphhopper.config.CHProfile
 import com.graphhopper.util.PMap
 import com.graphhopper.config.Profile
 import com.graphhopper.matching.MapMatching
@@ -58,13 +57,12 @@ class GraphHopperEngine @Inject constructor(
                     val gh = GraphHopper().apply {
                         setOSMFile(osmFile.absolutePath)
                         graphHopperLocation = graphDir.absolutePath
-                        setProfiles(Profile("foot").setWeighting("fastest"))
-                        chPreparationHandler.setCHProfiles(CHProfile("foot"))
+                        setProfiles(Profile("foot").setVehicle("foot").setWeighting("fastest"))
                         importOrLoad()
                     }
 
                     hopper = gh
-                    mapMatching = MapMatching.fromGraphHopper(gh, PMap())
+                    mapMatching = MapMatching.fromGraphHopper(gh, PMap().putObject("profile", "foot"))
                     initialized = true
                     Timber.i("GraphHopper initialized successfully")
                 } catch (e: java.io.FileNotFoundException) {

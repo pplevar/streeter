@@ -18,6 +18,8 @@ import com.streeter.R
 import com.streeter.domain.model.LatLng
 import com.streeter.ui.map.MAP_STYLE_URL
 import com.streeter.ui.map.MapLibreMapView
+import com.streeter.ui.map.fitBoundsToGeometryJson
+import org.maplibre.android.maps.MapLibreMap
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -28,6 +30,14 @@ fun RouteEditScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showDiscardDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
+
+    // Fit camera to route once both map and geometry are available
+    LaunchedEffect(mapRef, uiState.routeGeometryJson) {
+        val map = mapRef ?: return@LaunchedEffect
+        val json = uiState.routeGeometryJson ?: return@LaunchedEffect
+        fitBoundsToGeometryJson(map, json)
+    }
 
     // Handle save completion
     LaunchedEffect(uiState.isSaved) {
@@ -135,7 +145,9 @@ fun RouteEditScreen(
                         modifier = Modifier.fillMaxSize(),
                         styleUrl = MAP_STYLE_URL,
                         gpsPoints = emptyList(),
-                        onMapReady = { /* map ready */ },
+                        routeGeometryJson = uiState.routeGeometryJson,
+                        previewGeometryJson = uiState.previewGeometryJson,
+                        onMapReady = { map -> mapRef = map },
                         onMapClick = { latLng ->
                             viewModel.onMapTap(LatLng(latLng.latitude, latLng.longitude))
                         }

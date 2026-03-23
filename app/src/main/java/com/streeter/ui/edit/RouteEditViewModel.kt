@@ -126,7 +126,18 @@ class RouteEditViewModel @Inject constructor(
 
         viewModelScope.launch {
             if (!routingEngine.isReady()) {
-                routingEngine.initialize()
+                try {
+                    routingEngine.initialize()
+                } catch (e: Exception) {
+                    Timber.e(e, "Routing engine initialization failed")
+                    _uiState.update {
+                        it.copy(
+                            editMode = EditMode.IDLE,
+                            errorMessage = "Routing unavailable: map data not loaded."
+                        )
+                    }
+                    return@launch
+                }
             }
 
             routingEngine.route(from = anchor1, to = anchor2, via = listOf(waypoint))

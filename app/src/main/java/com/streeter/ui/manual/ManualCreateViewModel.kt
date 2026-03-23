@@ -62,8 +62,19 @@ class ManualCreateViewModel @Inject constructor(
         _uiState.update { it.copy(step = ManualCreateStep.GENERATING, errorMessage = null) }
 
         viewModelScope.launch {
-            if (!routingEngine.isReady()) {
-                routingEngine.initialize()
+            val engineReady = routingEngine.isReady() || run {
+                try {
+                    routingEngine.initialize()
+                    true
+                } catch (e: Exception) {
+                    Timber.w(e, "Routing engine unavailable, falling back to straight-line route")
+                    false
+                }
+            }
+
+            if (!engineReady) {
+                saveManualWalk(straightLineRoute(start, end))
+                return@launch
             }
 
             routingEngine.route(from = start, to = end)
@@ -125,6 +136,13 @@ class ManualCreateViewModel @Inject constructor(
                 step = ManualCreateStep.DONE
             )
         }
+    }
+
+    private fun straightLineRoute(start: LatLng, end: LatLng): RouteResult {
+        val results = FloatArray(1)
+        android.location.Location.distanceBetween(start.lat, start.lng, end.lat, end.lng, results)
+        val geometry = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[[${start.lng},${start.lat}],[${end.lng},${end.lat}]]},"properties":{}}"""
+        return RouteResult(geometryJson = geometry, distanceM = results[0].toDouble(), wayIds = emptyList())
     }
 
     fun clearError() {
