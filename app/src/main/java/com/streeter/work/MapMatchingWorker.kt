@@ -73,8 +73,7 @@ class MapMatchingWorker @AssistedInject constructor(
 
             coverageEngine.computeAndPersistCoverage(
                 walkId = walkId,
-                matchedWayIds = wayIds,
-                routeGeometryJson = segment.geometryJson
+                matchedWayIds = wayIds
             )
 
             // Update walk status to COMPLETED

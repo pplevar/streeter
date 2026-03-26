@@ -1,6 +1,9 @@
 package com.streeter.ui.manual
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.location.LocationManager
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -32,6 +35,11 @@ fun ManualCreateScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val initialLatLng = remember {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!granted) return@remember null
         try {
             val lm = context.getSystemService(LocationManager::class.java)
             val loc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)

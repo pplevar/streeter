@@ -50,6 +50,7 @@ private const val ROUTE_JSON_LAYER = "route_json_layer"
 private const val PREVIEW_SOURCE = "preview_source"
 private const val PREVIEW_LAYER = "preview_layer"
 
+@Suppress("DEPRECATION") // LocalLifecycleOwner: lifecycle-runtime-compose not yet in deps
 @Composable
 fun MapLibreMapView(
     modifier: Modifier = Modifier,
@@ -72,7 +73,6 @@ fun MapLibreMapView(
     val latestGpsPoints = rememberUpdatedState(gpsPoints)
     val latestRouteJson = rememberUpdatedState(routeGeometryJson)
     val latestPreviewJson = rememberUpdatedState(previewGeometryJson)
-    val latestShowCurrentPosition = rememberUpdatedState(showCurrentPosition)
     val latestFollowLocation = rememberUpdatedState(followLocation)
     val latestOnCameraMove = rememberUpdatedState(onCameraMove)
 
@@ -108,6 +108,7 @@ fun MapLibreMapView(
                     Timber.e("Map style failed to load: $error (url=$styleUrl)")
                 }
                 getMapAsync { map ->
+                    @Suppress("UNUSED_VALUE")
                     mapLibreMap = map
                     map.uiSettings.isRotateGesturesEnabled = false
                     val styleBuilder = if (styleUrl.trimStart().startsWith("{")) {
@@ -273,12 +274,3 @@ fun fitBoundsToGeometryJson(map: MapLibreMap, geojson: String) {
     }
 }
 
-fun fitBoundsToPoints(map: MapLibreMap, points: List<GpsPoint>) {
-    if (points.isEmpty()) return
-    val builder = LatLngBounds.Builder()
-    points.forEach { builder.include(LatLng(it.lat, it.lng)) }
-    val bounds = builder.build()
-    map.animateCamera(
-        org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(bounds, 64)
-    )
-}

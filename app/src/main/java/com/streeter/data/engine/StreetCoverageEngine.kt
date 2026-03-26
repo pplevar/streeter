@@ -3,7 +3,6 @@ package com.streeter.data.engine
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.StreetRepository
-import com.streeter.domain.repository.WalkRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import timber.log.Timber
@@ -23,7 +22,6 @@ import javax.inject.Singleton
 @Singleton
 class StreetCoverageEngine @Inject constructor(
     private val streetRepository: StreetRepository,
-    private val walkRepository: WalkRepository,
     private val routingEngine: RoutingEngine
 ) {
 
@@ -44,8 +42,7 @@ class StreetCoverageEngine @Inject constructor(
      */
     suspend fun computeAndPersistCoverage(
         walkId: Long,
-        matchedWayIds: List<Long>,
-        routeGeometryJson: String
+        matchedWayIds: List<Long>
     ) = withContext(Dispatchers.IO) {
         Timber.d("Computing coverage for walk=$walkId, ways=${matchedWayIds.size}")
 
@@ -53,7 +50,7 @@ class StreetCoverageEngine @Inject constructor(
         streetRepository.deleteWalkCoverageForWalk(walkId)
 
         // Process each way and collect intermediate results
-        val wayResults = matchedWayIds.distinct().mapNotNull { wayId ->
+        val wayResults = matchedWayIds.distinct().map { wayId ->
             processWayId(wayId, walkId)
         }
 
@@ -78,7 +75,7 @@ class StreetCoverageEngine @Inject constructor(
         Timber.d("Coverage computed for ${byStreetName.size} streets (from ${wayResults.size} ways)")
     }
 
-    private suspend fun processWayId(wayId: Long, walkId: Long): WayResult? {
+    private suspend fun processWayId(wayId: Long, walkId: Long): WayResult {
         val streetName = routingEngine.getStreetName(wayId) ?: "Way $wayId"
         val now = System.currentTimeMillis()
         val nameHash = md5(streetName)

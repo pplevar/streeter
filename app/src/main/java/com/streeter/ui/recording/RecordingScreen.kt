@@ -1,6 +1,9 @@
 package com.streeter.ui.recording
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.location.LocationManager
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,6 +26,11 @@ fun RecordingScreen(
     val gpsPoints by viewModel.gpsPoints.collectAsState()
     val context = LocalContext.current
     val initialLatLng = remember {
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED ||
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!granted) return@remember null
         try {
             val lm = context.getSystemService(LocationManager::class.java)
             val loc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)

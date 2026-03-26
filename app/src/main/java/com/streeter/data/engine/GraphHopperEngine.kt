@@ -34,6 +34,10 @@ class GraphHopperEngine @Inject constructor(
     private var initialized = false
     private var graphBounds: com.graphhopper.util.shapes.BBox? = null
 
+    companion object {
+        private const val OSM_ASSET_PATH = "osm/city.osm.pbf"
+    }
+
     override suspend fun isReady(): Boolean = initialized
 
     override suspend fun initialize() {
@@ -46,13 +50,13 @@ class GraphHopperEngine @Inject constructor(
 
                     // Copy PBF from assets on first run
                     if (!osmFile.exists()) {
-                        if (!assetExists("osm/city.osm.pbf")) {
+                        if (!assetExists(OSM_ASSET_PATH)) {
                             throw java.io.FileNotFoundException(
                                 "osm/city.osm.pbf not bundled — map matching unavailable"
                             )
                         }
                         Timber.i("Copying OSM PBF from assets…")
-                        copyAssetToFile("osm/city.osm.pbf", osmFile)
+                        copyAssetToFile(OSM_ASSET_PATH, osmFile)
                     }
 
                     // If the PBF is newer than the cached graph, delete the cache to force reimport.
@@ -167,18 +171,18 @@ class GraphHopperEngine @Inject constructor(
             gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE)
                 .getName()
                 .takeIf { it.isNotBlank() }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             null
         }
     }
 
     private fun buildMatchedLineString(result: com.graphhopper.matching.MatchResult): String {
-        val coords = result.mergedPath.calcPoints().map { "[${it.lon},${it.lat}]" }.joinToString(",")
+        val coords = result.mergedPath.calcPoints().joinToString(",") { "[${it.lon},${it.lat}]" }
         return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
     }
 
     private fun buildRouteLineString(points: com.graphhopper.util.PointList): String {
-        val coords = points.map { "[${it.lon},${it.lat}]" }.joinToString(",")
+        val coords = points.joinToString(",") { "[${it.lon},${it.lat}]" }
         return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
     }
 
