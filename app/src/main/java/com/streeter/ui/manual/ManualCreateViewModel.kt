@@ -43,15 +43,11 @@ class ManualCreateViewModel @Inject constructor(
         _uiState.update { it.copy(step = step) }
     }
 
-    fun onMapTap(latLng: LatLng) {
+    fun onCameraMove(latLng: LatLng) {
         when (_uiState.value.step) {
-            ManualCreateStep.SET_START -> {
-                _uiState.update { it.copy(startPin = latLng) }
-            }
-            ManualCreateStep.SET_END -> {
-                _uiState.update { it.copy(endPin = latLng) }
-            }
-            else -> { /* ignore during generation */ }
+            ManualCreateStep.SET_START -> _uiState.update { it.copy(startPin = latLng) }
+            ManualCreateStep.SET_END -> _uiState.update { it.copy(endPin = latLng) }
+            else -> {}
         }
     }
 

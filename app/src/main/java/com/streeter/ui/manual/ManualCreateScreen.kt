@@ -1,12 +1,18 @@
 package com.streeter.ui.manual
 
+import android.location.LocationManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -24,8 +30,16 @@ fun ManualCreateScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    val context = LocalContext.current
+    val initialLatLng = remember {
+        try {
+            val lm = context.getSystemService(LocationManager::class.java)
+            val loc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
+                ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            loc?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) }
+        } catch (_: Exception) { null }
+    }
 
-    // Navigate to detail/edit when walk is created
     LaunchedEffect(uiState.createdWalkId) {
         uiState.createdWalkId?.let { walkId -> onWalkCreated(walkId) }
     }
@@ -67,15 +81,42 @@ fun ManualCreateScreen(
                 modifier = Modifier.fillMaxSize(),
                 styleUrl = MAP_STYLE_URL,
                 gpsPoints = emptyList(),
-                onMapClick = { latLng ->
-                    viewModel.onMapTap(LatLng(latLng.latitude, latLng.longitude))
+                initialLatLng = initialLatLng,
+                onCameraMove = { mapLatLng ->
+                    viewModel.onCameraMove(LatLng(mapLatLng.latitude, mapLatLng.longitude))
                 }
             )
 
-            // Active mode indicator
+            // Centered pin overlay — visible when actively setting a point
+            val pinActive = uiState.step == ManualCreateStep.SET_START ||
+                    uiState.step == ManualCreateStep.SET_END
+            if (pinActive) {
+                val pinColor = if (uiState.step == ManualCreateStep.SET_START)
+                    Color(0xFF4CAF50) else Color(0xFFF44336)
+                Box(
+                    modifier = Modifier.align(Alignment.Center),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Outer ring
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .background(pinColor.copy(alpha = 0.2f), CircleShape)
+                            .border(2.dp, pinColor, CircleShape)
+                    )
+                    // Center dot
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(pinColor, CircleShape)
+                    )
+                }
+            }
+
+            // Instruction banner
             val instruction = when (uiState.step) {
-                ManualCreateStep.SET_START -> "Tap map to place start point"
-                ManualCreateStep.SET_END -> "Tap map to place end point"
+                ManualCreateStep.SET_START -> "Move map to set start point"
+                ManualCreateStep.SET_END -> "Move map to set end point"
                 ManualCreateStep.GENERATING -> "Generating route…"
                 ManualCreateStep.DONE -> null
             }
@@ -129,7 +170,6 @@ private fun ManualCreateBottomBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Start pin toggle
             FilterChip(
                 selected = uiState.step == ManualCreateStep.SET_START,
                 onClick = onSetStartMode,
@@ -142,7 +182,6 @@ private fun ManualCreateBottomBar(
                 modifier = Modifier.weight(1f)
             )
 
-            // End pin toggle
             FilterChip(
                 selected = uiState.step == ManualCreateStep.SET_END,
                 onClick = onSetEndMode,
@@ -155,7 +194,6 @@ private fun ManualCreateBottomBar(
                 modifier = Modifier.weight(1f)
             )
 
-            // Generate FAB
             Button(
                 onClick = onGenerate,
                 enabled = uiState.startPin != null && uiState.endPin != null

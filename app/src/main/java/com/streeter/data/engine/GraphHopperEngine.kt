@@ -32,6 +32,7 @@ class GraphHopperEngine @Inject constructor(
     private var hopper: GraphHopper? = null
     private var mapMatching: MapMatching? = null
     private var initialized = false
+    private var graphBounds: com.graphhopper.util.shapes.BBox? = null
 
     override suspend fun isReady(): Boolean = initialized
 
@@ -54,6 +55,13 @@ class GraphHopperEngine @Inject constructor(
                         copyAssetToFile("osm/city.osm.pbf", osmFile)
                     }
 
+                    // If the PBF is newer than the cached graph, delete the cache to force reimport.
+                    // This handles the case where the bundled PBF asset is replaced with a corrected one.
+                    if (graphDir.exists() && osmFile.lastModified() > graphDir.lastModified()) {
+                        Timber.i("OSM PBF is newer than cached graph — deleting cache to force reimport")
+                        graphDir.deleteRecursively()
+                    }
+
                     val gh = GraphHopper().apply {
                         setOSMFile(osmFile.absolutePath)
                         graphHopperLocation = graphDir.absolutePath
@@ -62,9 +70,10 @@ class GraphHopperEngine @Inject constructor(
                     }
 
                     hopper = gh
+                    graphBounds = gh.baseGraph.bounds
                     mapMatching = MapMatching.fromGraphHopper(gh, PMap().putObject("profile", "foot"))
                     initialized = true
-                    Timber.i("GraphHopper initialized successfully")
+                    Timber.i("GraphHopper initialized successfully; bounds: %s", graphBounds)
                 } catch (e: java.io.FileNotFoundException) {
                     Timber.w("GraphHopper: %s", e.message)
                     throw e
@@ -76,9 +85,25 @@ class GraphHopperEngine @Inject constructor(
         }
     }
 
+    private fun boundsError(lat: Double, lng: Double): Result<Nothing>? {
+        val bounds = graphBounds ?: return null
+        if (!bounds.contains(lat, lng)) {
+            return Result.failure(
+                IllegalArgumentException(
+                    "Routing point ($lat, $lng) is outside the loaded map area " +
+                    "(lat ${bounds.minLat}–${bounds.maxLat}, lon ${bounds.minLon}–${bounds.maxLon}). " +
+                    "Ensure the bundled OSM PBF covers this location."
+                )
+            )
+        }
+        return null
+    }
+
     override suspend fun matchTrace(points: List<GpsPoint>): Result<MatchResult> {
         if (!initialized) return Result.failure(IllegalStateException("Engine not ready"))
         if (points.size < 2) return Result.failure(IllegalArgumentException("Need at least 2 points"))
+
+        boundsError(points.first().lat, points.first().lng)?.let { return it }
 
         return withContext(Dispatchers.IO) {
             try {
@@ -103,6 +128,9 @@ class GraphHopperEngine @Inject constructor(
 
     override suspend fun route(from: LatLng, to: LatLng, via: List<LatLng>): Result<RouteResult> {
         if (!initialized) return Result.failure(IllegalStateException("Engine not ready"))
+
+        boundsError(from.lat, from.lng)?.let { return it }
+        boundsError(to.lat, to.lng)?.let { return it }
 
         return withContext(Dispatchers.IO) {
             try {
@@ -130,6 +158,17 @@ class GraphHopperEngine @Inject constructor(
                 Timber.e(e, "Routing failed")
                 Result.failure(e)
             }
+        }
+    }
+
+    override fun getStreetName(edgeId: Long): String? {
+        val gh = hopper ?: return null
+        return try {
+            gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE)
+                .getName()
+                .takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            null
         }
     }
 

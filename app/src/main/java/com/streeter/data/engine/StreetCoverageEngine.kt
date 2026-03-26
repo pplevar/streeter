@@ -1,5 +1,6 @@
 package com.streeter.data.engine
 
+import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
@@ -22,12 +23,24 @@ import javax.inject.Singleton
 @Singleton
 class StreetCoverageEngine @Inject constructor(
     private val streetRepository: StreetRepository,
-    private val walkRepository: WalkRepository
+    private val walkRepository: WalkRepository,
+    private val routingEngine: RoutingEngine
 ) {
+
+    private data class WayResult(
+        val streetId: Long,
+        val streetName: String,
+        val sections: List<StreetSection>,
+        val sectionCoverages: Map<String, Float>
+    )
 
     /**
      * Compute coverage for a walk given its matched way IDs and route geometry.
      * Persists results to [StreetRepository].
+     *
+     * Multiple OSM ways can share the same street name. We process each way independently,
+     * then aggregate all ways with the same name into a single [WalkStreetCoverage] record
+     * before persisting — so each named street appears exactly once.
      */
     suspend fun computeAndPersistCoverage(
         walkId: Long,
@@ -39,25 +52,34 @@ class StreetCoverageEngine @Inject constructor(
         // Delete existing coverage for this walk (recalculation scenario)
         streetRepository.deleteWalkCoverageForWalk(walkId)
 
-        // Group coverage by street
-        val streetCoverageMap = mutableMapOf<Long, Float>()
-
-        for (wayId in matchedWayIds.distinct()) {
-            processWayId(wayId, walkId, routeGeometryJson, streetCoverageMap)
+        // Process each way and collect intermediate results
+        val wayResults = matchedWayIds.distinct().mapNotNull { wayId ->
+            processWayId(wayId, walkId)
         }
 
-        Timber.d("Coverage computed for ${streetCoverageMap.size} streets")
+        // Aggregate ways that share the same street name into one coverage record
+        val byStreetName = wayResults.groupBy { it.streetName }
+        for ((streetName, results) in byStreetName) {
+            val allSections = results.flatMap { it.sections }
+            val allCoverages = results.fold(emptyMap<String, Float>()) { acc, r -> acc + r.sectionCoverages }
+            val streetPct = streetCoverage(allSections, allCoverages)
+            val representativeStreetId = results.first().streetId
+
+            streetRepository.insertWalkStreetCoverage(
+                WalkStreetCoverage(
+                    walkId = walkId,
+                    streetId = representativeStreetId,
+                    streetName = streetName,
+                    coveragePct = streetPct
+                )
+            )
+        }
+
+        Timber.d("Coverage computed for ${byStreetName.size} streets (from ${wayResults.size} ways)")
     }
 
-    private suspend fun processWayId(
-        wayId: Long,
-        walkId: Long,
-        routeGeometryJson: String,
-        streetCoverageMap: MutableMap<Long, Float>
-    ) {
-        // Upsert street entity (in a real impl, pull from GraphHopper's graph storage)
-        // For Phase 4, we create a minimal street record based on the way ID
-        val streetName = "Way $wayId" // Placeholder: real impl reads OSM name tag
+    private suspend fun processWayId(wayId: Long, walkId: Long): WayResult? {
+        val streetName = routingEngine.getStreetName(wayId) ?: "Way $wayId"
         val now = System.currentTimeMillis()
         val nameHash = md5(streetName)
 
@@ -95,29 +117,13 @@ class StreetCoverageEngine @Inject constructor(
             WalkSectionCoverage(walkId = walkId, sectionStableId = stableId, coveredPct = coverage)
         )
 
-        // Street-level rollup
         val sections = streetRepository.getSectionsByStreetId(streetId)
-        val streetPct = streetCoverage(sections, mapOf(stableId to coverage))
-        streetCoverageMap[streetId] = streetPct
-
-        streetRepository.insertWalkStreetCoverage(
-            WalkStreetCoverage(
-                walkId = walkId,
-                streetId = streetId,
-                streetName = streetName,
-                coveragePct = streetPct
-            )
+        return WayResult(
+            streetId = streetId,
+            streetName = streetName,
+            sections = sections,
+            sectionCoverages = mapOf(stableId to coverage)
         )
-    }
-
-    /**
-     * Section-level coverage: fraction of the section's length traversed.
-     * Matched edge IDs are used as a proxy; in a full implementation, each edge
-     * maps to a measured length on the section.
-     */
-    fun sectionCoverage(section: StreetSection, matchedEdgeIds: Set<Long>): Float {
-        // Simplified: section is fully covered if its fromNode appears in matchedEdgeIds
-        return if (section.fromNodeOsmId in matchedEdgeIds) 1.0f else 0.0f
     }
 
     /**

@@ -18,7 +18,7 @@ import com.streeter.data.local.entity.*
         PendingMatchJobEntity::class,
     ],
     version = 1,
-    exportSchema = true
+    exportSchema = false
 )
 abstract class StreeterDatabase : RoomDatabase() {
     abstract fun walkDao(): WalkDao

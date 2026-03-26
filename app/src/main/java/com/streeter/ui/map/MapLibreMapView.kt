@@ -59,8 +59,10 @@ fun MapLibreMapView(
     previewGeometryJson: String? = null,
     followLocation: Boolean = false,
     showCurrentPosition: Boolean = false,
+    initialLatLng: LatLng? = null,
     onMapReady: (MapLibreMap) -> Unit = {},
-    onMapClick: ((LatLng) -> Unit)? = null
+    onMapClick: ((LatLng) -> Unit)? = null,
+    onCameraMove: ((LatLng) -> Unit)? = null
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
@@ -72,6 +74,7 @@ fun MapLibreMapView(
     val latestPreviewJson = rememberUpdatedState(previewGeometryJson)
     val latestShowCurrentPosition = rememberUpdatedState(showCurrentPosition)
     val latestFollowLocation = rememberUpdatedState(followLocation)
+    val latestOnCameraMove = rememberUpdatedState(onCameraMove)
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -106,6 +109,7 @@ fun MapLibreMapView(
                 }
                 getMapAsync { map ->
                     mapLibreMap = map
+                    map.uiSettings.isRotateGesturesEnabled = false
                     val styleBuilder = if (styleUrl.trimStart().startsWith("{")) {
                         Style.Builder().fromJson(styleUrl)
                     } else {
@@ -118,6 +122,19 @@ fun MapLibreMapView(
                         updateRouteLayer(map, latestGpsPoints.value)
                         updateRouteJsonLayer(map, latestRouteJson.value)
                         updatePreviewLayer(map, latestPreviewJson.value)
+                        // Center on initial position when no route is loaded yet.
+                        if (initialLatLng != null && latestGpsPoints.value.isEmpty()) {
+                            map.moveCamera(
+                                org.maplibre.android.camera.CameraUpdateFactory.newCameraPosition(
+                                    CameraPosition.Builder()
+                                        .target(initialLatLng)
+                                        .zoom(15.0)
+                                        .build()
+                                )
+                            )
+                        }
+                        // Report initial center so callers can seed their state.
+                        map.cameraPosition.target?.let { latestOnCameraMove.value?.invoke(it) }
                         onMapReady(map)
                     }
                     onMapClick?.let { callback ->
@@ -125,6 +142,9 @@ fun MapLibreMapView(
                             callback(latLng)
                             true
                         }
+                    }
+                    map.addOnCameraMoveListener {
+                        map.cameraPosition.target?.let { latestOnCameraMove.value?.invoke(it) }
                     }
                 }
             }

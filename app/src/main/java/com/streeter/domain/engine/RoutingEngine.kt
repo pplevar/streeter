@@ -28,4 +28,10 @@ interface RoutingEngine {
      * optionally passing through [via] waypoints in order.
      */
     suspend fun route(from: LatLng, to: LatLng, via: List<LatLng> = emptyList()): Result<RouteResult>
+
+    /**
+     * Look up the street name for a given GraphHopper edge ID.
+     * Returns null if the engine is not initialized or the edge has no name.
+     */
+    fun getStreetName(edgeId: Long): String?
 }

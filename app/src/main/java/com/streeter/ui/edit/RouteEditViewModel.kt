@@ -185,12 +185,12 @@ class RouteEditViewModel @Inject constructor(
             )
             editOperationRepository.insertOperation(op)
 
-            // Splice preview into working route (simple replacement for single-segment routes)
-            currentGeometryJson = previewGeometry
+            val splicedGeometry = spliceGeometry(originalGeometry, previewGeometry, anchor1, anchor2)
+            currentGeometryJson = splicedGeometry
 
             _uiState.update {
                 it.copy(
-                    routeGeometryJson = previewGeometry,
+                    routeGeometryJson = splicedGeometry,
                     previewGeometryJson = null,
                     correctionCount = it.correctionCount + 1,
                     hasUnsavedChanges = true,
@@ -201,6 +201,58 @@ class RouteEditViewModel @Inject constructor(
                 )
             }
         }
+    }
+
+    /**
+     * Splices [previewJson] into [originalJson] between the points closest to [anchor1] and [anchor2].
+     * Replaces the original segment from idx1 to idx2 (inclusive) with the preview.
+     */
+    private fun spliceGeometry(
+        originalJson: String,
+        previewJson: String,
+        anchor1: LatLng,
+        anchor2: LatLng
+    ): String {
+        val origCoords = parseCoordinates(originalJson)
+        val previewCoords = parseCoordinates(previewJson)
+        if (origCoords.isEmpty() || previewCoords.isEmpty()) return previewJson
+
+        // Search the full route for both anchors independently, then sort so idx1 < idx2
+        val idxA = origCoords.indices.minByOrNull { distanceSq(origCoords[it], anchor1) } ?: 0
+        val idxB = origCoords.indices.minByOrNull { distanceSq(origCoords[it], anchor2) } ?: (origCoords.size - 1)
+        val idx1 = minOf(idxA, idxB)
+        val idx2 = maxOf(idxA, idxB)
+
+        Timber.d("splice: origSize=${origCoords.size} idx1=$idx1 idx2=$idx2 previewSize=${previewCoords.size}")
+
+        // Replace origCoords[idx1..idx2] with preview (idx1/idx2 are removed, not kept)
+        val spliced = origCoords.take(idx1) + previewCoords + origCoords.drop(idx2 + 1)
+        return buildLineString(spliced)
+    }
+
+    private fun parseCoordinates(geometryJson: String): List<LatLng> {
+        return try {
+            val obj = org.json.JSONObject(geometryJson)
+            val arr = obj.getJSONObject("geometry").getJSONArray("coordinates")
+            (0 until arr.length()).map { i ->
+                val pair = arr.getJSONArray(i)
+                LatLng(lat = pair.getDouble(1), lng = pair.getDouble(0))
+            }
+        } catch (e: Exception) {
+            Timber.e(e, "Failed to parse geometry coordinates")
+            emptyList()
+        }
+    }
+
+    private fun distanceSq(a: LatLng, b: LatLng): Double {
+        val dlat = a.lat - b.lat
+        val dlng = a.lng - b.lng
+        return dlat * dlat + dlng * dlng
+    }
+
+    private fun buildLineString(coords: List<LatLng>): String {
+        val coordStr = coords.joinToString(",") { "[${it.lng},${it.lat}]" }
+        return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coordStr]},"properties":{}}"""
     }
 
     fun discardPreview() {
