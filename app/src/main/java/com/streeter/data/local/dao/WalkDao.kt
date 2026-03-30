@@ -12,6 +12,9 @@ interface WalkDao {
     @Query("SELECT * FROM walks WHERE id = :id")
     suspend fun getById(id: Long): WalkEntity?
 
+    @Query("SELECT * FROM walks WHERE id = :id")
+    fun observeById(id: Long): Flow<WalkEntity?>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(walk: WalkEntity): Long
 

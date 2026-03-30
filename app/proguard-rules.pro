@@ -12,6 +12,11 @@
 -keep class * extends androidx.room.RoomDatabase
 -dontwarn androidx.room.**
 
+# WorkManager — class name is stored as a String by WorkManager; must not be renamed
+-keep class * extends androidx.work.ListenableWorker { *; }
+# Keep Hilt-generated worker factories in the work package
+-keep class com.streeter.work.** { *; }
+
 # Timber
 -dontwarn org.jetbrains.annotations.**
 

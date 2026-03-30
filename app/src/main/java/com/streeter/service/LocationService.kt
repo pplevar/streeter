@@ -11,6 +11,7 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
+import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import com.google.android.gms.location.*
 import com.streeter.MainActivity
@@ -138,6 +139,7 @@ class LocationService : LifecycleService() {
     }
 
     private fun stopWalk() {
+        Timber.w("LocationService.stopWalk called: isRecording=%b, currentWalkId=%d", _isRecording.value, currentWalkId)
         if (!_isRecording.value) return
         stopLocationUpdates()
         lifecycleScope.launch {
@@ -164,8 +166,14 @@ class LocationService : LifecycleService() {
                         lastError = null
                     )
                 )
-                workManager.enqueue(MapMatchingWorker.buildRequest(walkId))
-                Timber.d("Walk stopped, id=$walkId → PENDING_MATCH, worker enqueued")
+                workManager.enqueueUniqueWork(
+                    "match_$walkId",
+                    ExistingWorkPolicy.KEEP,
+                    MapMatchingWorker.buildRequest(walkId)
+                )
+                Timber.w("Walk stopped: id=%d → PENDING_MATCH, worker enqueued", walkId)
+            } else {
+                Timber.w("Walk stopped but currentWalkId=-1, worker NOT enqueued")
             }
             currentWalkId = -1L
             _isRecording.value = false

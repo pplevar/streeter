@@ -17,6 +17,9 @@ class WalkRepositoryImpl @Inject constructor(
     override fun getAllWalks(): Flow<List<Walk>> =
         walkDao.getAllWalks().map { list -> list.map { it.toDomain() } }
 
+    override fun observeWalk(id: Long): Flow<Walk?> =
+        walkDao.observeById(id).map { it?.toDomain() }
+
     override suspend fun getWalkById(id: Long): Walk? =
         walkDao.getById(id)?.toDomain()
 

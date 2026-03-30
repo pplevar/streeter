@@ -3,9 +3,11 @@ package com.streeter.ui.detail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.work.MapMatchingWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -42,9 +44,26 @@ class WalkDetailViewModel @Inject constructor(
     }
 
     private fun loadWalkDetail() {
+        // Fast one-shot load to exit the loading state immediately
         viewModelScope.launch {
             val walk = walkRepository.getWalkById(walkId)
             _uiState.update { it.copy(walk = walk, isLoading = false) }
+            // If the walk is stuck in PENDING_MATCH, re-enqueue the worker.
+            // KEEP policy means this is a no-op if the worker is already queued or running.
+            if (walk?.status == WalkStatus.PENDING_MATCH) {
+                Timber.w("Walk $walkId is PENDING_MATCH on load — ensuring worker is enqueued")
+                workManager.enqueueUniqueWork(
+                    "match_$walkId",
+                    ExistingWorkPolicy.KEEP,
+                    MapMatchingWorker.buildRequest(walkId)
+                )
+            }
+        }
+        // Live observation so the UI reacts when the worker completes the walk
+        viewModelScope.launch {
+            walkRepository.observeWalk(walkId).collect { walk ->
+                _uiState.update { it.copy(walk = walk) }
+            }
         }
     }
 

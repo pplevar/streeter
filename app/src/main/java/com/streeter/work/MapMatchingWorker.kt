@@ -6,7 +6,10 @@ import androidx.work.*
 import com.streeter.data.engine.StreetCoverageEngine
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.JobStatus
+import com.streeter.domain.model.RouteSegment
+import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
+import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
@@ -25,6 +28,7 @@ class MapMatchingWorker @AssistedInject constructor(
     @Assisted workerParams: WorkerParameters,
     private val walkRepository: WalkRepository,
     private val routeSegmentRepository: RouteSegmentRepository,
+    private val gpsPointRepository: GpsPointRepository,
     private val pendingMatchJobRepository: PendingMatchJobRepository,
     private val routingEngine: RoutingEngine,
     private val coverageEngine: StreetCoverageEngine
@@ -45,45 +49,69 @@ class MapMatchingWorker @AssistedInject constructor(
         val walkId = inputData.getLong(KEY_WALK_ID, -1L)
         if (walkId == -1L) return@withContext Result.failure()
 
-        Timber.d("MapMatchingWorker starting for walk=$walkId")
+        Timber.w("MapMatchingWorker starting for walk=$walkId")
 
-        // Update job status
         pendingMatchJobRepository.getJobForWalk(walkId)?.let {
             pendingMatchJobRepository.updateJob(it.copy(status = JobStatus.IN_PROGRESS))
         }
 
         return@withContext try {
-            // Ensure engine is ready
             if (!routingEngine.isReady()) {
                 routingEngine.initialize()
             }
 
-            val segments = routeSegmentRepository.getSegmentsForWalk(walkId)
-            if (segments.isEmpty()) {
-                Timber.w("No route segments found for walk=$walkId")
-                pendingMatchJobRepository.getJobForWalk(walkId)?.let {
-                    pendingMatchJobRepository.updateJob(
-                        it.copy(status = JobStatus.FAILED, lastError = "No route segments")
-                    )
-                }
+            val walk = walkRepository.getWalkById(walkId)
+            if (walk == null) {
+                Timber.w("Walk $walkId not found")
                 return@withContext Result.failure()
             }
-            val segment = segments.first()
-            val wayIds = parseWayIds(segment.matchedWayIds)
+
+            val wayIds: List<Long> = if (walk.source == WalkSource.RECORDED) {
+                // GPS trace → map match → get way IDs
+                val points = gpsPointRepository.getPointsForWalk(walkId).filter { !it.isFiltered }
+                Timber.d("MapMatchingWorker: ${points.size} GPS points for walk=$walkId")
+
+                if (points.size < 2) {
+                    Timber.w("Not enough GPS points for walk=$walkId, completing without coverage")
+                    completeWalk(walkId)
+                    return@withContext Result.success()
+                }
+
+                val matchResult = routingEngine.matchTrace(points)
+                if (matchResult.isFailure) {
+                    Timber.w("Map matching failed for walk=$walkId: ${matchResult.exceptionOrNull()?.message}, completing without coverage")
+                    completeWalk(walkId)
+                    return@withContext Result.success()
+                }
+
+                val matched = matchResult.getOrThrow()
+                // Persist segment so it can be referenced later (e.g. route editing)
+                routeSegmentRepository.insertSegment(
+                    RouteSegment(
+                        walkId = walkId,
+                        geometryJson = matched.routeGeometryJson,
+                        matchedWayIds = "[${matched.matchedWayIds.joinToString(",")}]",
+                        segmentOrder = 0
+                    )
+                )
+                matched.matchedWayIds
+            } else {
+                // Manual walk — use pre-existing segments built by the route editor
+                val segments = routeSegmentRepository.getSegmentsForWalk(walkId)
+                if (segments.isEmpty()) {
+                    Timber.w("No segments for manual walk=$walkId, completing without coverage")
+                    completeWalk(walkId)
+                    return@withContext Result.success()
+                }
+                segments.flatMap { parseWayIds(it.matchedWayIds) }
+            }
 
             coverageEngine.computeAndPersistCoverage(
                 walkId = walkId,
                 matchedWayIds = wayIds
             )
 
-            // Update walk status to COMPLETED
-            walkRepository.getWalkById(walkId)?.let { walk ->
-                walkRepository.updateWalk(
-                    walk.copy(status = WalkStatus.COMPLETED, updatedAt = System.currentTimeMillis())
-                )
-            }
-
-            // Mark job done
+            completeWalk(walkId)
             pendingMatchJobRepository.getJobForWalk(walkId)?.let {
                 pendingMatchJobRepository.updateJob(it.copy(status = JobStatus.DONE))
             }
@@ -91,14 +119,8 @@ class MapMatchingWorker @AssistedInject constructor(
             Timber.i("MapMatchingWorker completed for walk=$walkId")
             Result.success()
         } catch (e: java.io.FileNotFoundException) {
-            // Engine assets are missing (e.g. OSM PBF not bundled). This won't resolve
-            // on retry, so complete the walk without coverage data.
             Timber.w("MapMatchingWorker: engine assets missing for walk=$walkId, completing without coverage")
-            walkRepository.getWalkById(walkId)?.let { walk ->
-                walkRepository.updateWalk(
-                    walk.copy(status = WalkStatus.COMPLETED, updatedAt = System.currentTimeMillis())
-                )
-            }
+            completeWalk(walkId)
             pendingMatchJobRepository.getJobForWalk(walkId)?.let {
                 pendingMatchJobRepository.updateJob(
                     it.copy(status = JobStatus.DONE, lastError = "No map assets: ${e.message}")
@@ -121,10 +143,18 @@ class MapMatchingWorker @AssistedInject constructor(
         }
     }
 
+    private suspend fun completeWalk(walkId: Long) {
+        walkRepository.getWalkById(walkId)?.let { walk ->
+            walkRepository.updateWalk(
+                walk.copy(status = WalkStatus.COMPLETED, updatedAt = System.currentTimeMillis())
+            )
+        }
+    }
+
     private fun parseWayIds(json: String): List<Long> {
         return try {
             Json.parseToJsonElement(json).jsonArray.map { it.jsonPrimitive.content.toLong() }
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             emptyList()
         }
     }

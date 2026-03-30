@@ -50,13 +50,13 @@ class GraphHopperEngine @Inject constructor(
 
                     // Copy PBF from assets on first run
                     if (!osmFile.exists()) {
-                        if (!assetExists(OSM_ASSET_PATH)) {
+                        if (!assetExists()) {
                             throw java.io.FileNotFoundException(
                                 "osm/city.osm.pbf not bundled — map matching unavailable"
                             )
                         }
                         Timber.i("Copying OSM PBF from assets…")
-                        copyAssetToFile(OSM_ASSET_PATH, osmFile)
+                        copyAssetToFile(osmFile)
                     }
 
                     // If the PBF is newer than the cached graph, delete the cache to force reimport.
@@ -186,16 +186,16 @@ class GraphHopperEngine @Inject constructor(
         return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
     }
 
-    private fun assetExists(assetPath: String): Boolean =
+    private fun assetExists(): Boolean =
         try {
-            context.assets.open(assetPath).use { true }
+            context.assets.open(OSM_ASSET_PATH).use { true }
         } catch (_: java.io.FileNotFoundException) {
             false
         }
 
-    private fun copyAssetToFile(assetPath: String, dest: File) {
+    private fun copyAssetToFile(dest: File) {
         dest.parentFile?.mkdirs()
-        context.assets.open(assetPath).use { input ->
+        context.assets.open(OSM_ASSET_PATH).use { input ->
             dest.outputStream().use { output ->
                 input.copyTo(output)
             }
