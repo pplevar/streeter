@@ -113,7 +113,10 @@ fun WalkDetailScreen(
 
                         if (walk.status == WalkStatus.PENDING_MATCH) {
                             item {
-                                ProcessingBanner()
+                                ProcessingBanner(
+                                    progress = uiState.matchingProgress,
+                                    step = uiState.progressStep
+                                )
                             }
                         }
 
@@ -188,19 +191,39 @@ private fun WalkHeaderCard(walk: com.streeter.domain.model.Walk) {
 }
 
 @Composable
-private fun ProcessingBanner() {
+private fun ProcessingBanner(progress: Int?, step: String?) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.tertiaryContainer)
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp))
-            Text(stringResource(R.string.label_processing))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (progress != null) {
+                    Text(
+                        text = "$progress%",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                } else {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                }
+                Text(
+                    text = step ?: stringResource(R.string.label_processing),
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            if (progress != null) {
+                LinearProgressIndicator(
+                    progress = { progress / 100f },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }

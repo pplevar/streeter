@@ -63,7 +63,7 @@ class RouteEditOperationTest {
 
     private val engine = StreetCoverageEngine(
         streetRepository = FakeStreetRepository(),
-        walkRepository = FakeWalkRepository()
+        routingEngine = FakeRoutingEngine()
     )
 
     @Test
@@ -150,12 +150,15 @@ private class FakeStreetRepository : com.streeter.domain.repository.StreetReposi
     override suspend fun getStreetCoverageForWalk(walkId: Long) = emptyList<com.streeter.domain.model.WalkStreetCoverage>()
 }
 
-private class FakeWalkRepository : com.streeter.domain.repository.WalkRepository {
-    override fun getAllWalks() = kotlinx.coroutines.flow.flowOf(emptyList<com.streeter.domain.model.Walk>())
-    override suspend fun getWalkById(id: Long) = null
-    override suspend fun insertWalk(walk: com.streeter.domain.model.Walk) = 0L
-    override suspend fun updateWalk(walk: com.streeter.domain.model.Walk) {}
-    override suspend fun deleteWalk(id: Long) {}
-    override suspend fun getActiveRecordingWalk() = null
-    override fun getWalkWithCoverage(walkId: Long) = kotlinx.coroutines.flow.flowOf(emptyList<com.streeter.domain.model.WalkStreetCoverage>())
+private class FakeRoutingEngine : com.streeter.domain.engine.RoutingEngine {
+    override suspend fun isReady() = true
+    override suspend fun initialize() {}
+    override suspend fun matchTrace(points: List<com.streeter.domain.model.GpsPoint>) =
+        Result.failure<com.streeter.domain.model.MatchResult>(UnsupportedOperationException("fake"))
+    override suspend fun route(
+        from: com.streeter.domain.model.LatLng,
+        to: com.streeter.domain.model.LatLng,
+        via: List<com.streeter.domain.model.LatLng>
+    ) = Result.failure<com.streeter.domain.model.RouteResult>(UnsupportedOperationException("fake"))
+    override fun getStreetName(edgeId: Long): String? = null
 }

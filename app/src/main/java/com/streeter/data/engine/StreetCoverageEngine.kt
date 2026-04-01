@@ -42,16 +42,26 @@ class StreetCoverageEngine @Inject constructor(
      */
     suspend fun computeAndPersistCoverage(
         walkId: Long,
-        matchedWayIds: List<Long>
+        matchedWayIds: List<Long>,
+        onProgress: (suspend (processed: Int, total: Int) -> Unit)? = null
     ) = withContext(Dispatchers.IO) {
         Timber.d("Computing coverage for walk=$walkId, ways=${matchedWayIds.size}")
 
         // Delete existing coverage for this walk (recalculation scenario)
         streetRepository.deleteWalkCoverageForWalk(walkId)
 
+        // Reuse a single MessageDigest to avoid per-call allocation overhead.
+        val md5Digest = MessageDigest.getInstance("MD5")
+
         // Process each way and collect intermediate results
-        val wayResults = matchedWayIds.distinct().map { wayId ->
-            processWayId(wayId, walkId)
+        val distinctWayIds = matchedWayIds.distinct()
+        val total = distinctWayIds.size
+        val wayResults = ArrayList<WayResult>(total)
+        for ((index, wayId) in distinctWayIds.withIndex()) {
+            wayResults += processWayId(wayId, walkId, md5Digest)
+            if (index % 20 == 19 || index == total - 1) {
+                onProgress?.invoke(index + 1, total)
+            }
         }
 
         // Aggregate ways that share the same street name into one coverage record
@@ -75,10 +85,10 @@ class StreetCoverageEngine @Inject constructor(
         Timber.d("Coverage computed for ${byStreetName.size} streets (from ${wayResults.size} ways)")
     }
 
-    private suspend fun processWayId(wayId: Long, walkId: Long): WayResult {
+    private suspend fun processWayId(wayId: Long, walkId: Long, md5Digest: MessageDigest): WayResult {
         val streetName = routingEngine.getStreetName(wayId) ?: "Way $wayId"
         val now = System.currentTimeMillis()
-        val nameHash = md5(streetName)
+        val nameHash = md5(streetName, md5Digest)
 
         val streetId = streetRepository.upsertStreet(
             Street(
@@ -91,7 +101,7 @@ class StreetCoverageEngine @Inject constructor(
         )
 
         // Create a single section for this way (placeholder: real impl splits at intersections)
-        val stableId = generateStableId(streetName, wayId, wayId + 1)
+        val stableId = generateStableId(streetName, wayId, wayId + 1, md5Digest)
         val existingSection = streetRepository.getSectionByStableId(stableId)
 
         if (existingSection == null) {
@@ -134,16 +144,30 @@ class StreetCoverageEngine @Inject constructor(
     }
 
     /**
-     * Stable section ID: SHA-256(streetName + fromNodeId + toNodeId), truncated to 16 hex chars.
+     * Stable section ID: MD5(streetName + fromNodeId + toNodeId), truncated to 16 hex chars.
      * Survives OSM PK reassignments across data refreshes.
      */
     fun generateStableId(streetName: String, fromNodeId: Long, toNodeId: Long): String {
-        val input = "$streetName|$fromNodeId|$toNodeId"
-        return md5(input).take(16)
+        return generateStableId(streetName, fromNodeId, toNodeId, MessageDigest.getInstance("MD5"))
     }
 
-    private fun md5(input: String): String {
-        val bytes = MessageDigest.getInstance("MD5").digest(input.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
+    private fun generateStableId(streetName: String, fromNodeId: Long, toNodeId: Long, md5Digest: MessageDigest): String {
+        val input = "$streetName|$fromNodeId|$toNodeId"
+        return md5(input, md5Digest).take(16)
+    }
+
+    private fun md5(input: String, digest: MessageDigest): String {
+        digest.reset()
+        val bytes = digest.digest(input.toByteArray())
+        val sb = StringBuilder(bytes.size * 2)
+        for (b in bytes) {
+            sb.append(HEX_CHARS[(b.toInt() shr 4) and 0x0F])
+            sb.append(HEX_CHARS[b.toInt() and 0x0F])
+        }
+        return sb.toString()
+    }
+
+    companion object {
+        private val HEX_CHARS = "0123456789abcdef".toCharArray()
     }
 }

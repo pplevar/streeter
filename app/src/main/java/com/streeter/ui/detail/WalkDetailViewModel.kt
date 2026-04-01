@@ -4,7 +4,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.ExistingWorkPolicy
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
+import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.work.MapMatchingWorker
@@ -23,14 +25,17 @@ data class WalkDetailUiState(
     val isLoading: Boolean = true,
     val isDeleted: Boolean = false,
     val errorMessage: String? = null,
-    val showDeleteConfirm: Boolean = false
+    val showDeleteConfirm: Boolean = false,
+    val matchingProgress: Int? = null,
+    val progressStep: String? = null
 )
 
 @HiltViewModel
 class WalkDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val walkRepository: WalkRepository,
-    private val workManager: WorkManager
+    private val workManager: WorkManager,
+    private val routingEngine: RoutingEngine
 ) : ViewModel() {
 
     private val walkId: Long = checkNotNull(savedStateHandle["walkId"])
@@ -41,6 +46,27 @@ class WalkDetailViewModel @Inject constructor(
     init {
         loadWalkDetail()
         observeCoverage()
+        observeWorkerProgress()
+        preWarmEngine()
+    }
+
+    /**
+     * Pre-warm the routing engine in the background so it's already loaded
+     * when the user taps recalculate. Without this, the worker has to
+     * initialize the engine from scratch (loading the graph from disk),
+     * which causes heavy GC pressure and makes progress appear stuck at 5%.
+     */
+    private fun preWarmEngine() {
+        viewModelScope.launch {
+            try {
+                if (!routingEngine.isReady()) {
+                    Timber.d("Pre-warming routing engine from WalkDetailViewModel")
+                    routingEngine.initialize()
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Pre-warming routing engine failed (worker will retry)")
+            }
+        }
     }
 
     private fun loadWalkDetail() {
@@ -67,6 +93,21 @@ class WalkDetailViewModel @Inject constructor(
         viewModelScope.launch {
             walkRepository.observeWalk(walkId).collect { walk ->
                 _uiState.update { it.copy(walk = walk) }
+            }
+        }
+    }
+
+    private fun observeWorkerProgress() {
+        viewModelScope.launch {
+            workManager.getWorkInfosForUniqueWorkFlow("match_$walkId").collect { infos ->
+                val info = infos.firstOrNull()
+                if (info != null && !info.state.isFinished) {
+                    val progress = info.progress.getInt(MapMatchingWorker.KEY_PROGRESS, 0)
+                    val step = info.progress.getString(MapMatchingWorker.KEY_STEP)
+                    _uiState.update { it.copy(matchingProgress = progress.takeIf { p -> p > 0 }, progressStep = step) }
+                } else {
+                    _uiState.update { it.copy(matchingProgress = null, progressStep = null) }
+                }
             }
         }
     }

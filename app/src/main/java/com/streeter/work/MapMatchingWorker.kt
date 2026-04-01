@@ -37,6 +37,8 @@ class MapMatchingWorker @AssistedInject constructor(
 
     companion object {
         const val KEY_WALK_ID = "walk_id"
+        const val KEY_PROGRESS = "progress"
+        const val KEY_STEP = "step"
 
         fun buildRequest(walkId: Long): OneTimeWorkRequest =
             OneTimeWorkRequestBuilder<MapMatchingWorker>()
@@ -55,11 +57,15 @@ class MapMatchingWorker @AssistedInject constructor(
         pendingMatchJobRepository.getJobForWalk(walkId)?.let {
             pendingMatchJobRepository.updateJob(it.copy(status = JobStatus.IN_PROGRESS))
         }
+        setProgress(workDataOf(KEY_PROGRESS to 5, KEY_STEP to "Starting…"))
 
         return@withContext try {
             if (!routingEngine.isReady()) {
+                setProgress(workDataOf(KEY_PROGRESS to 5, KEY_STEP to "Loading map engine (this may take a moment)…"))
                 routingEngine.initialize()
+                Timber.d("MapMatchingWorker: engine initialized for walk=$walkId")
             }
+            setProgress(workDataOf(KEY_PROGRESS to 10, KEY_STEP to "Loading route data…"))
 
             val walk = walkRepository.getWalkById(walkId)
             if (walk == null) {
@@ -71,6 +77,7 @@ class MapMatchingWorker @AssistedInject constructor(
                 // GPS trace → map match → get way IDs
                 val points = gpsPointRepository.getPointsForWalk(walkId).filter { !it.isFiltered }
                 Timber.d("MapMatchingWorker: ${points.size} GPS points for walk=$walkId")
+                setProgress(workDataOf(KEY_PROGRESS to 15, KEY_STEP to "Loaded ${points.size} GPS points…"))
 
                 if (points.size < 2) {
                     Timber.w("Not enough GPS points for walk=$walkId, completing without coverage")
@@ -80,12 +87,14 @@ class MapMatchingWorker @AssistedInject constructor(
 
                 if (isStopped) return@withContext Result.retry()
 
+                setProgress(workDataOf(KEY_PROGRESS to 20, KEY_STEP to "Matching route to streets…"))
                 val matchResult = routingEngine.matchTrace(points)
                 if (matchResult.isFailure) {
                     Timber.w("Map matching failed for walk=$walkId: ${matchResult.exceptionOrNull()?.message}, completing without coverage")
                     completeWalk(walkId)
                     return@withContext Result.success()
                 }
+                setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Route matched…"))
 
                 val matched = matchResult.getOrThrow()
                 // Persist segment so it can be referenced later (e.g. route editing)
@@ -106,14 +115,21 @@ class MapMatchingWorker @AssistedInject constructor(
                     completeWalk(walkId)
                     return@withContext Result.success()
                 }
+                setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Route segments loaded…"))
                 segments.flatMap { parseWayIds(it.matchedWayIds) }
             }
 
+            setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Computing street coverage…"))
             coverageEngine.computeAndPersistCoverage(
                 walkId = walkId,
-                matchedWayIds = wayIds
+                matchedWayIds = wayIds,
+                onProgress = { processed, total ->
+                    val pct = 50 + ((processed.toFloat() / total) * 40).toInt()
+                    setProgress(workDataOf(KEY_PROGRESS to pct, KEY_STEP to "Computing coverage ($processed/$total streets)…"))
+                }
             )
 
+            setProgress(workDataOf(KEY_PROGRESS to 95, KEY_STEP to "Finalizing…"))
             completeWalk(walkId)
             pendingMatchJobRepository.getJobForWalk(walkId)?.let {
                 pendingMatchJobRepository.updateJob(it.copy(status = JobStatus.DONE))
