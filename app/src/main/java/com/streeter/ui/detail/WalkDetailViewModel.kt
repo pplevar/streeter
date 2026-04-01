@@ -52,9 +52,13 @@ class WalkDetailViewModel @Inject constructor(
             // KEEP policy means this is a no-op if the worker is already queued or running.
             if (walk?.status == WalkStatus.PENDING_MATCH) {
                 Timber.w("Walk $walkId is PENDING_MATCH on load — ensuring worker is enqueued")
+                // REPLACE, not KEEP: if existing work is stuck in backoff (ENQUEUED state),
+                // KEEP silently ignores the new request and nothing runs. REPLACE cancels
+                // any queued/running instance and starts fresh, which is correct here because
+                // we only reach this path when the walk is visibly stuck in PENDING_MATCH.
                 workManager.enqueueUniqueWork(
                     "match_$walkId",
-                    ExistingWorkPolicy.KEEP,
+                    ExistingWorkPolicy.REPLACE,
                     MapMatchingWorker.buildRequest(walkId)
                 )
             }

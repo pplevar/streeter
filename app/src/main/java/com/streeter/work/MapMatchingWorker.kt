@@ -15,6 +15,7 @@ import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -77,6 +78,8 @@ class MapMatchingWorker @AssistedInject constructor(
                     return@withContext Result.success()
                 }
 
+                if (isStopped) return@withContext Result.retry()
+
                 val matchResult = routingEngine.matchTrace(points)
                 if (matchResult.isFailure) {
                     Timber.w("Map matching failed for walk=$walkId: ${matchResult.exceptionOrNull()?.message}, completing without coverage")
@@ -127,6 +130,12 @@ class MapMatchingWorker @AssistedInject constructor(
                 )
             }
             Result.success()
+        } catch (e: CancellationException) {
+            // WorkerStoppedException (subclass of CancellationException) means the OS stopped
+            // this job. Do NOT catch it as a retryable error — WorkManager handles rescheduling
+            // internally. Swallowing it and returning Result.retry() causes an infinite restart loop.
+            Timber.w("MapMatchingWorker cancelled by OS for walk=$walkId; will be rescheduled")
+            throw e
         } catch (e: Exception) {
             Timber.e(e, "MapMatchingWorker failed for walk=$walkId")
             val retries = runAttemptCount
