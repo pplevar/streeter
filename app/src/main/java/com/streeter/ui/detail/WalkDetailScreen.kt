@@ -117,6 +117,17 @@ fun WalkDetailScreen(
                             }
                         }
 
+                        if (walk.status == WalkStatus.COMPLETED) {
+                            item {
+                                OutlinedButton(
+                                    onClick = { viewModel.recalculateRoute() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Recalculate route")
+                                }
+                            }
+                        }
+
                         if (uiState.streetCoverage.isNotEmpty()) {
                             item {
                                 Text(

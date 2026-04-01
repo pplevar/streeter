@@ -104,6 +104,23 @@ class WalkDetailViewModel @Inject constructor(
         }
     }
 
+    fun recalculateRoute() {
+        val walk = _uiState.value.walk ?: return
+        viewModelScope.launch {
+            try {
+                walkRepository.updateWalk(walk.copy(status = WalkStatus.PENDING_MATCH))
+                workManager.enqueueUniqueWork(
+                    "match_$walkId",
+                    ExistingWorkPolicy.REPLACE,
+                    MapMatchingWorker.buildRequest(walkId)
+                )
+            } catch (e: Exception) {
+                Timber.e(e, "Recalculate failed for walk=$walkId")
+                _uiState.update { it.copy(errorMessage = "Recalculation failed. Please try again.") }
+            }
+        }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(errorMessage = null) }
     }
