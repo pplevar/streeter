@@ -3,7 +3,6 @@ package com.streeter.ui.manual
 import android.Manifest
 import android.content.pm.PackageManager
 import android.location.LocationManager
-import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
@@ -18,9 +17,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.R
-import com.streeter.domain.model.LatLng
 import com.streeter.ui.map.MAP_STYLE_URL
 import com.streeter.ui.map.MapLibreMapView
 
@@ -64,7 +63,10 @@ fun ManualCreateScreen(
             TopAppBar(
                 title = { Text("Create Manual Walk") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(
+                        onClick = onNavigateBack,
+                        enabled = uiState.step != ManualCreateStep.FINISHING
+                    ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
@@ -74,9 +76,9 @@ fun ManualCreateScreen(
         bottomBar = {
             ManualCreateBottomBar(
                 uiState = uiState,
-                onSetStartMode = { viewModel.setStep(ManualCreateStep.SET_START) },
-                onSetEndMode = { viewModel.setStep(ManualCreateStep.SET_END) },
-                onGenerate = { viewModel.generateRoute() }
+                onConfirmPoint = viewModel::onConfirmPoint,
+                onUndo = viewModel::onUndo,
+                onFinish = viewModel::onFinish
             )
         }
     ) { paddingValues ->
@@ -91,16 +93,17 @@ fun ManualCreateScreen(
                 gpsPoints = emptyList(),
                 initialLatLng = initialLatLng,
                 onCameraMove = { mapLatLng ->
-                    viewModel.onCameraMove(LatLng(mapLatLng.latitude, mapLatLng.longitude))
-                }
+                    viewModel.onCameraMove(
+                        com.streeter.domain.model.LatLng(mapLatLng.latitude, mapLatLng.longitude)
+                    )
+                },
+                routeGeometryJson = uiState.accumulatedGeometryJson
             )
 
-            // Centered pin overlay — visible when actively setting a point
-            val pinActive = uiState.step == ManualCreateStep.SET_START ||
-                    uiState.step == ManualCreateStep.SET_END
+            // Centered pin overlay — visible when actively placing a point
+            val pinActive = uiState.step == ManualCreateStep.PLACING_FIRST_POINT ||
+                    uiState.step == ManualCreateStep.PLACING_NEXT_POINT
             if (pinActive) {
-                val pinColor = if (uiState.step == ManualCreateStep.SET_START)
-                    Color(0xFF4CAF50) else Color(0xFFF44336)
                 Box(
                     modifier = Modifier.align(Alignment.Center),
                     contentAlignment = Alignment.Center
@@ -109,23 +112,28 @@ fun ManualCreateScreen(
                     Box(
                         modifier = Modifier
                             .size(28.dp)
-                            .background(pinColor.copy(alpha = 0.2f), CircleShape)
-                            .border(2.dp, pinColor, CircleShape)
+                            .background(Color(0xFF4CAF50).copy(alpha = 0.2f), CircleShape)
+                            .border(2.dp, Color(0xFF4CAF50), CircleShape)
                     )
                     // Center dot
                     Box(
                         modifier = Modifier
                             .size(8.dp)
-                            .background(pinColor, CircleShape)
+                            .background(Color(0xFF4CAF50), CircleShape)
                     )
                 }
             }
 
             // Instruction banner
             val instruction = when (uiState.step) {
-                ManualCreateStep.SET_START -> "Move map to set start point"
-                ManualCreateStep.SET_END -> "Move map to set end point"
-                ManualCreateStep.GENERATING -> "Generating route…"
+                ManualCreateStep.PLACING_FIRST_POINT ->
+                    "Move map to start point, then tap Add Point"
+                ManualCreateStep.PLACING_NEXT_POINT ->
+                    "Move map to next point, then tap Add Point"
+                ManualCreateStep.ROUTING ->
+                    "Computing route segment…"
+                ManualCreateStep.FINISHING ->
+                    "Saving walk…"
                 ManualCreateStep.DONE -> null
             }
             if (instruction != null) {
@@ -142,9 +150,12 @@ fun ManualCreateScreen(
                 }
             }
 
-            if (uiState.step == ManualCreateStep.GENERATING) {
+            // Loading overlay
+            if (uiState.isRouting || uiState.step == ManualCreateStep.FINISHING) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.3f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Card {
@@ -154,7 +165,10 @@ fun ManualCreateScreen(
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                            Text("Generating route…")
+                            Text(
+                                if (uiState.step == ManualCreateStep.FINISHING)
+                                    "Saving walk…" else "Computing route segment…"
+                            )
                         }
                     }
                 }
@@ -166,9 +180,9 @@ fun ManualCreateScreen(
 @Composable
 private fun ManualCreateBottomBar(
     uiState: ManualCreateUiState,
-    onSetStartMode: () -> Unit,
-    onSetEndMode: () -> Unit,
-    onGenerate: () -> Unit
+    onConfirmPoint: () -> Unit,
+    onUndo: () -> Unit,
+    onFinish: () -> Unit
 ) {
     BottomAppBar {
         Row(
@@ -178,37 +192,31 @@ private fun ManualCreateBottomBar(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FilterChip(
-                selected = uiState.step == ManualCreateStep.SET_START,
-                onClick = onSetStartMode,
-                label = {
-                    Text(
-                        if (uiState.startPin != null) "Start: set" else "Set Start"
-                    )
-                },
-                enabled = uiState.step != ManualCreateStep.GENERATING,
-                modifier = Modifier.weight(1f)
-            )
-
-            FilterChip(
-                selected = uiState.step == ManualCreateStep.SET_END,
-                onClick = onSetEndMode,
-                label = {
-                    Text(
-                        if (uiState.endPin != null) "End: set" else "Set End"
-                    )
-                },
-                enabled = uiState.step != ManualCreateStep.GENERATING,
-                modifier = Modifier.weight(1f)
-            )
-
-            Button(
-                onClick = onGenerate,
-                enabled = uiState.startPin != null && uiState.endPin != null
-                        && uiState.step != ManualCreateStep.GENERATING,
+            OutlinedButton(
+                onClick = onUndo,
+                enabled = uiState.hasPoints && !uiState.isRouting &&
+                        uiState.step != ManualCreateStep.FINISHING,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(stringResource(R.string.label_generate_route))
+                Text(text = stringResource(R.string.label_undo))
+            }
+
+            Button(
+                onClick = onConfirmPoint,
+                enabled = uiState.currentPin != null &&
+                        (uiState.step == ManualCreateStep.PLACING_FIRST_POINT ||
+                                uiState.step == ManualCreateStep.PLACING_NEXT_POINT),
+                modifier = Modifier.weight(1.5f)
+            ) {
+                Text(text = stringResource(R.string.label_add_point))
+            }
+
+            FilledTonalButton(
+                onClick = onFinish,
+                enabled = uiState.hasSegments && !uiState.isRouting &&
+                        uiState.step != ManualCreateStep.FINISHING
+            ) {
+                Text(text = stringResource(R.string.label_finish_walk))
             }
         }
     }

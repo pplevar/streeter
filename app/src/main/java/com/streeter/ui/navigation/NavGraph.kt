@@ -75,7 +75,7 @@ fun StreeterNavGraph(navController: NavHostController) {
             ManualCreateScreen(
                 onNavigateBack = { navController.popBackStack() },
                 onWalkCreated = { walkId ->
-                    navController.navigate(Screen.RouteEdit.createRoute(walkId)) {
+                    navController.navigate(Screen.WalkDetail.createRoute(walkId)) {
                         popUpTo(Screen.ManualCreate.route) { inclusive = true }
                     }
                 }

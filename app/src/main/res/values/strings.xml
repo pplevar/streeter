@@ -15,6 +15,8 @@
     <string name="label_save">Save</string>
     <string name="label_discard">Discard</string>
     <string name="label_undo">Undo</string>
+    <string name="label_add_point">Add Point</string>
+    <string name="label_finish_walk">Finish</string>
     <string name="label_delete">Delete</string>
     <string name="label_cancel">Cancel</string>
     <string name="label_confirm">Confirm</string>
