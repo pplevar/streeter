@@ -12,10 +12,15 @@ import com.streeter.domain.repository.WalkRepository
 import com.streeter.service.LocationService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.math.*
 import javax.inject.Inject
 
 @HiltViewModel
@@ -29,6 +34,18 @@ class RecordingViewModel @Inject constructor(
 
     private val _gpsPoints = MutableStateFlow<List<GpsPoint>>(emptyList())
     val gpsPoints: StateFlow<List<GpsPoint>> = _gpsPoints.asStateFlow()
+
+    private val _walkStartMs = MutableStateFlow(0L)
+    private val _elapsedMs = MutableStateFlow(0L)
+    val elapsedMs: StateFlow<Long> = _elapsedMs.asStateFlow()
+
+    val distanceM: StateFlow<Double> = _gpsPoints
+        .map { points ->
+            points.filter { !it.isFiltered }
+                .zipWithNext()
+                .sumOf { (a, b) -> haversineM(a.lat, a.lng, b.lat, b.lng) }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0.0)
 
     private val serviceConnection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
@@ -50,6 +67,7 @@ class RecordingViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val activeWalk = walkRepository.getActiveRecordingWalk()
+            _walkStartMs.value = activeWalk?.date ?: System.currentTimeMillis()
             val serviceIntent = Intent(context, LocationService::class.java).apply {
                 if (activeWalk != null) {
                     action = LocationService.ACTION_RESUME_WALK
@@ -62,6 +80,14 @@ class RecordingViewModel @Inject constructor(
 
             val bindIntent = Intent(context, LocationService::class.java)
             isBound = context.bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
+        }
+
+        viewModelScope.launch {
+            while (true) {
+                delay(1000L)
+                val start = _walkStartMs.value
+                if (start > 0) _elapsedMs.value = System.currentTimeMillis() - start
+            }
         }
     }
 
@@ -88,4 +114,16 @@ class RecordingViewModel @Inject constructor(
         unbind()
         super.onCleared()
     }
+
+    private fun haversineM(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val R = 6371000.0
+        val phi1 = lat1.toRadians()
+        val phi2 = lat2.toRadians()
+        val dphi = (lat2 - lat1).toRadians()
+        val dlambda = (lon2 - lon1).toRadians()
+        val a = sin(dphi / 2).pow(2) + cos(phi1) * cos(phi2) * sin(dlambda / 2).pow(2)
+        return R * 2 * asin(sqrt(a))
+    }
+
+    private fun Double.toRadians() = this * PI / 180.0
 }

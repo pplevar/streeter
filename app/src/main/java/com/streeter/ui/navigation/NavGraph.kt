@@ -31,6 +31,7 @@ fun StreeterNavGraph(navController: NavHostController) {
 
         composable(Screen.Recording.route) {
             RecordingScreen(
+                onNavigateBack = { navController.popBackStack() },
                 onStopAndNavigate = { walkId ->
                     navController.navigate(Screen.WalkDetail.createRoute(walkId)) {
                         popUpTo(Screen.Home.route)

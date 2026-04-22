@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Streeter — Android App Designs</title>
+<link href="https://fonts.googleapis.com/css2?family=Google+Sans+Text:wght@400;500;600;700&family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #f0eee9; font-family: 'Google Sans Text', Roboto, system-ui, sans-serif; }
+  * { box-sizing: border-box; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="tokens.js"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="icons.jsx"></script>
+<script type="text/babel" src="ui-primitives.jsx"></script>
+<script type="text/babel" src="map-bg.jsx"></script>
+<script type="text/babel" src="screens.jsx"></script>
+
+<script type="text/babel">
+const TWEAKS = /*EDITMODE-BEGIN*/{
+  "theme": "both"
+}/*EDITMODE-END*/;
+
+// Android bezel wrapper (custom, tighter than starter)
+function Device({ children, dark }) {
+  const W = 380, H = 780;
+  return (
+    <div style={{
+      width: W, height: H, borderRadius: 44,
+      padding: 10,
+      background: dark ? '#0a0e0c' : '#1a1a1a',
+      boxShadow: '0 24px 60px rgba(0,0,0,.22), 0 2px 6px rgba(0,0,0,.12), inset 0 0 0 1px rgba(255,255,255,.04)',
+    }}>
+      <div style={{ width: '100%', height: '100%', borderRadius: 34, overflow: 'hidden', position: 'relative' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function App() {
+  const [tweakMode, setTweakMode] = React.useState(false);
+  const [tweaks, setTweaks] = React.useState(TWEAKS);
+  const theme = tweaks.theme || 'both';
+
+  React.useEffect(() => {
+    const onMsg = (e) => {
+      if (e.data?.type === '__activate_edit_mode') setTweakMode(true);
+      if (e.data?.type === '__deactivate_edit_mode') setTweakMode(false);
+    };
+    window.addEventListener('message', onMsg);
+    window.parent.postMessage({ type: '__edit_mode_available' }, '*');
+    return () => window.removeEventListener('message', onMsg);
+  }, []);
+
+  const setTheme = (v) => {
+    setTweaks(s => ({ ...s, theme: v }));
+    window.parent.postMessage({ type: '__edit_mode_set_keys', edits: { theme: v } }, '*');
+  };
+
+  const L = window.STREETER_TOKENS.light;
+  const D = window.STREETER_TOKENS.dark;
+
+  const renderPair = (Comp, props = {}) => {
+    if (theme === 'light') return <><Device dark={false}><Comp t={L} dark={false} {...props}/></Device></>;
+    if (theme === 'dark') return <><Device dark><Comp t={D} dark {...props}/></Device></>;
+    return <><Device dark={false}><Comp t={L} dark={false} {...props}/></Device><Device dark><Comp t={D} dark {...props}/></Device></>;
+  };
+
+  const pairW = theme === 'both' ? 800 : 400;
+  const singleW = 400;
+
+  return (
+    <>
+      <DesignCanvas>
+        <DCSection id="intro" title="Streeter — Android design" subtitle="Material 3 Expressive · blue-green forest seed · light + dark">
+          <DCArtboard id="system" label="Design system" width={860} height={580}>
+            <SystemSummary L={L} D={D}/>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="home" title="Home" subtitle="Launcher with city progress hero">
+          <DCArtboard id="home-default" label="Default (no active walk)" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(HomeScreen)}</PairStage>
+          </DCArtboard>
+          <DCArtboard id="home-active" label="Active walk in progress" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(HomeScreen, { active: true })}</PairStage>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="recording" title="Recording" subtitle="Full-bleed map with live metrics sheet">
+          <DCArtboard id="rec" label="Live recording" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(RecordingScreen)}</PairStage>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="history" title="History" subtitle="Walk cards with mini-maps and status chips">
+          <DCArtboard id="history" label="Walk list" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(HistoryScreen)}</PairStage>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="walk-detail" title="Walk Detail" subtitle="Coverage-first detail view — the richest screen">
+          <DCArtboard id="wd-done" label="Completed — streets covered" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(WalkDetailScreen)}</PairStage>
+          </DCArtboard>
+          <DCArtboard id="wd-proc" label="Processing — matching route" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(WalkDetailScreen, { processing: true })}</PairStage>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="settings" title="Settings" subtitle="GPS sensitivity · map data · data management">
+          <DCArtboard id="settings-default" label="Default" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(SettingsScreen)}</PairStage>
+          </DCArtboard>
+          <DCArtboard id="settings-refresh" label="Refreshing map data" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(SettingsScreen, { refreshing: true })}</PairStage>
+          </DCArtboard>
+        </DCSection>
+
+        <DCSection id="manual" title="Create Manual Walk" subtitle="Drop points on the map — routing engine computes each segment">
+          <DCArtboard id="manual-first" label="Placing first point" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(ManualCreateScreen, { step: 'placing-first' })}</PairStage>
+          </DCArtboard>
+          <DCArtboard id="manual-next" label="Placing next point (3 points set)" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(ManualCreateScreen, { step: 'placing-next' })}</PairStage>
+          </DCArtboard>
+          <DCArtboard id="manual-routing" label="Routing segment" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(ManualCreateScreen, { step: 'routing' })}</PairStage>
+          </DCArtboard>
+          <DCArtboard id="manual-saving" label="Finishing — saving walk" width={pairW} height={800}>
+            <PairStage theme={theme}>{renderPair(ManualCreateScreen, { step: 'finishing' })}</PairStage>
+          </DCArtboard>
+        </DCSection>
+      </DesignCanvas>
+
+      {tweakMode && (
+        <div style={{
+          position: 'fixed', bottom: 20, right: 20, zIndex: 1000,
+          background: '#1a1a1a', color: '#fff', borderRadius: 16, padding: 16, width: 240,
+          fontFamily: 'Google Sans Text, system-ui, sans-serif',
+          boxShadow: '0 12px 40px rgba(0,0,0,.35)',
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', opacity: 0.7, marginBottom: 10 }}>Tweaks</div>
+          <div style={{ fontSize: 13, marginBottom: 8, opacity: 0.85 }}>Theme</div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            {['light','dark','both'].map(v => (
+              <button key={v} onClick={() => setTheme(v)} style={{
+                flex: 1, padding: '8px 4px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                background: theme === v ? '#A6F2D6' : '#2a2a2a',
+                color: theme === v ? '#00210F' : '#fff',
+                fontWeight: 600, fontSize: 12, textTransform: 'capitalize',
+              }}>{v}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
+function PairStage({ children, theme }) {
+  return (
+    <div style={{
+      width: '100%', height: '100%',
+      background: 'linear-gradient(180deg, #e9e6df 0%, #dcd7cc 100%)',
+      display: 'flex', justifyContent: 'center', alignItems: 'center',
+      gap: 20, padding: 10,
+    }}>
+      {children}
+    </div>
+  );
+}
+
+function SystemSummary({ L, D }) {
+  const swatch = (c, label, onColor='#fff') => (
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{ height: 56, borderRadius: 12, background: c, display: 'flex', alignItems: 'flex-end', padding: 6, color: onColor, fontSize: 10, fontWeight: 700 }}>{c.toUpperCase()}</div>
+      <div style={{ fontSize: 11, fontWeight: 600, marginTop: 4, color: '#333' }}>{label}</div>
+    </div>
+  );
+  return (
+    <div style={{ padding: 28, fontFamily: 'Google Sans Text, Roboto, sans-serif', height: '100%', background: '#fff', overflow: 'auto' }}>
+      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 1.5, color: L.primary, textTransform: 'uppercase' }}>Design System</div>
+      <div style={{ fontSize: 32, fontWeight: 500, letterSpacing: -0.6, marginTop: 4 }}>Streeter — Material 3 Expressive</div>
+      <div style={{ fontSize: 14, color: '#555', marginTop: 6, maxWidth: 640 }}>
+        Seed color <b>#2B5F4B</b> — a deep forest blue-green that evokes streets under tree canopy. Rounder shapes (28px card radius), bolder type, and a sage/olive secondary palette for a calm, outdoorsy feel.
+      </div>
+
+      <div style={{ marginTop: 24, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#888' }}>Primary · Secondary · Tertiary</div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+        {swatch(L.primary, 'primary')}
+        {swatch(L.primaryContainer, 'primary container', '#00210F')}
+        {swatch(L.secondary, 'secondary')}
+        {swatch(L.secondaryContainer, 'secondary container', '#0B1F14')}
+        {swatch(L.tertiary, 'tertiary')}
+        {swatch(L.tertiaryContainer, 'tertiary container', '#271900')}
+        {swatch(L.error, 'error')}
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#888' }}>Hardcoded map accents</div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+        {swatch(L.routeBlue, 'route-blue · #3B82F6')}
+        {swatch(L.previewOrange, 'preview-orange · #F59E0B')}
+        {swatch(L.pinStart, 'pin-start · #4CAF50')}
+        {swatch(L.pinEnd, 'pin-end · #F44336')}
+      </div>
+
+      <div style={{ marginTop: 20, fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#888' }}>Dark theme surfaces</div>
+      <div style={{ display: 'flex', gap: 10, marginTop: 10 }}>
+        {swatch(D.primary, 'primary', '#00382A')}
+        {swatch(D.primaryContainer, 'primary container')}
+        {swatch(D.surfaceContainerLow, 'surface low')}
+        {swatch(D.surfaceContainer, 'surface')}
+        {swatch(D.surfaceContainerHigh, 'surface high')}
+        {swatch(D.surfaceContainerHighest, 'surface highest')}
+      </div>
+
+      <div style={{ marginTop: 24, display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#888', marginBottom: 8 }}>Type scale</div>
+          <div style={{ fontSize: 32, fontWeight: 500, letterSpacing: -0.6, lineHeight: 1.1 }}>Display — 32/500</div>
+          <div style={{ fontSize: 22, fontWeight: 500, letterSpacing: -0.3, marginTop: 8 }}>Headline — 22/500</div>
+          <div style={{ fontSize: 16, fontWeight: 600, marginTop: 8 }}>Title — 16/600</div>
+          <div style={{ fontSize: 14, marginTop: 6, color: '#555' }}>Body — 14/400 for supporting text and metadata.</div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.4, textTransform: 'uppercase', color: '#888', marginTop: 8 }}>Label — 11/700 uppercase</div>
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#888', marginBottom: 8 }}>Shape</div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end' }}>
+            {[[32, 'xl'], [28, 'lg'], [20, 'md'], [12, 'sm']].map(([r, name]) => (
+              <div key={name} style={{ textAlign: 'center' }}>
+                <div style={{ width: 56, height: 56, background: L.primaryContainer, borderRadius: r }}/>
+                <div style={{ fontSize: 11, fontWeight: 600, color: '#333', marginTop: 4 }}>{r}px · {name}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', color: '#888', marginTop: 20, marginBottom: 8 }}>Buttons</div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <Button t={L} variant="filled" size="sm">Filled</Button>
+            <Button t={L} variant="tonal" size="sm">Tonal</Button>
+            <Button t={L} variant="outlined" size="sm">Outlined</Button>
+            <Button t={L} variant="destructive" size="sm">Destructive</Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>

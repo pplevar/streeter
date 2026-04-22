@@ -53,6 +53,15 @@ interface StreetDao {
         ORDER BY ws.coveragePct DESC
     """)
     suspend fun getWalkCoverage(walkId: Long): List<WalkStreetWithName>
+
+    @Query("SELECT COUNT(*) FROM walk_streets WHERE walkId = :walkId")
+    suspend fun getStreetCountForWalk(walkId: Long): Int
+
+    @Query("SELECT COUNT(DISTINCT streetId) FROM walk_streets")
+    fun observeCoveredStreetCount(): Flow<Int>
+
+    @Query("SELECT COUNT(*) FROM streets")
+    fun observeTotalStreetCount(): Flow<Int>
 }
 
 data class WalkStreetWithName(

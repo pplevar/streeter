@@ -1,15 +1,24 @@
 package com.streeter.ui.settings
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.R
 
@@ -36,7 +45,7 @@ fun SettingsScreen(
             text = { Text("All walks, routes, and coverage data will be permanently deleted. This cannot be undone.") },
             confirmButton = {
                 TextButton(
-                    onClick = { viewModel.dismissClearDataConfirm() /* TODO: implement clear in Phase 8 */ },
+                    onClick = { viewModel.dismissClearDataConfirm() },
                     colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 ) { Text("Clear all") }
             },
@@ -66,75 +75,199 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 32.dp)
         ) {
-            // GPS Recording section
-            SectionHeader("GPS Recording")
+            // GPS Recording
+            SettingsSectionHeader("GPS Recording")
 
-            SettingSlider(
-                label = "GPS sample interval",
-                value = uiState.gpsIntervalSeconds.toFloat(),
-                valueRange = 5f..60f,
-                steps = 10,
-                displayValue = "${uiState.gpsIntervalSeconds} s",
-                onValueChangeFinished = { viewModel.setGpsInterval(it.toInt()) }
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp)
+            ) {
+                SettingSlider(
+                    label = "GPS sample interval",
+                    value = uiState.gpsIntervalSeconds.toFloat(),
+                    valueRange = 5f..60f,
+                    steps = 10,
+                    displayValue = "${uiState.gpsIntervalSeconds} s",
+                    onValueChangeFinished = { viewModel.setGpsInterval(it.toInt()) }
+                )
+                SettingSlider(
+                    label = "Max speed filter",
+                    value = uiState.maxSpeedKmh.toFloat(),
+                    valueRange = 20f..100f,
+                    steps = 15,
+                    displayValue = "${uiState.maxSpeedKmh} km/h",
+                    onValueChangeFinished = { viewModel.setMaxSpeed(it.toInt()) }
+                )
+            }
 
-            SettingSlider(
-                label = "Max speed filter threshold",
-                value = uiState.maxSpeedKmh.toFloat(),
-                valueRange = 20f..100f,
-                steps = 15,
-                displayValue = "${uiState.maxSpeedKmh} km/h",
-                onValueChangeFinished = { viewModel.setMaxSpeed(it.toInt()) }
-            )
+            // Map Data
+            SettingsSectionHeader("Map Data")
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-            // Map Data section
-            SectionHeader("Map Data")
-
-            ListItem(
-                headlineContent = { Text("Refresh map data") },
-                supportingContent = { Text("Re-process OSM graph for street matching") },
-                trailingContent = {
-                    if (uiState.isRefreshingMapData) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                    } else {
-                        TextButton(onClick = { viewModel.refreshMapData() }) {
-                            Text("Refresh")
-                        }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLow)
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.secondaryContainer),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Outlined.Map,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = MaterialTheme.colorScheme.onSecondaryContainer
+                    )
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Refresh map data",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Re-index OSM street data from bundled assets",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        lineHeight = 18.sp
+                    )
+                }
+                if (uiState.isRefreshingMapData) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        strokeWidth = 2.5.dp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    FilledTonalButton(
+                        onClick = { viewModel.refreshMapData() },
+                        modifier = Modifier.height(36.dp),
+                        shape = RoundedCornerShape(18.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp)
+                    ) {
+                        Text("Refresh", fontSize = 13.sp)
                     }
                 }
-            )
+            }
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            // Data
+            SettingsSectionHeader("Data")
 
-            // Data management section
-            SectionHeader("Data")
-
-            ListItem(
-                headlineContent = { Text("Clear all data") },
-                supportingContent = { Text("Delete all walks, routes, and coverage data") },
-                trailingContent = {
-                    TextButton(
-                        onClick = { viewModel.showClearDataConfirm() },
-                        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
-                    ) { Text("Clear") }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(24.dp))
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.08f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.Delete,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = MaterialTheme.colorScheme.error
+                    )
                 }
-            )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Clear all data",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "Permanently delete all walks and coverage",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f),
+                        lineHeight = 18.sp
+                    )
+                }
+                Button(
+                    onClick = { viewModel.showClearDataConfirm() },
+                    modifier = Modifier.height(36.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    contentPadding = PaddingValues(horizontal = 18.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text("Clear", fontSize = 13.sp)
+                }
+            }
 
-            Spacer(Modifier.height(24.dp))
+            // Privacy footer
+            Spacer(Modifier.height(28.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    Icons.Outlined.Lock,
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(top = 2.dp)
+                        .size(20.dp),
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                )
+                Column {
+                    Text(
+                        text = "On-device only",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = "GPS, route matching, and coverage run locally. Nothing is sent to any server.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                        lineHeight = 17.sp
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun SectionHeader(title: String) {
+private fun SettingsSectionHeader(title: String) {
     Text(
-        text = title,
-        style = MaterialTheme.typography.labelLarge,
+        text = title.uppercase(),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 0.8.sp,
         color = MaterialTheme.colorScheme.primary,
-        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        modifier = Modifier.padding(top = 18.dp, bottom = 10.dp, start = 6.dp, end = 6.dp)
     )
 }
 
@@ -149,13 +282,23 @@ private fun SettingSlider(
 ) {
     var sliderValue by remember(value) { mutableFloatStateOf(value) }
 
-    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+    Column {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
-            Text(displayValue, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
+            Text(
+                text = label,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = displayValue,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
         Slider(
             value = sliderValue,

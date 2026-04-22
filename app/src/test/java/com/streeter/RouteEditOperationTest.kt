@@ -148,6 +148,9 @@ private class FakeStreetRepository : com.streeter.domain.repository.StreetReposi
     override suspend fun insertWalkSectionCoverage(coverage: com.streeter.domain.model.WalkSectionCoverage) {}
     override suspend fun deleteWalkCoverageForWalk(walkId: Long) {}
     override suspend fun getStreetCoverageForWalk(walkId: Long) = emptyList<com.streeter.domain.model.WalkStreetCoverage>()
+    override suspend fun getStreetCountForWalk(walkId: Long): Int = 0
+    override fun observeCoveredStreetCount(): kotlinx.coroutines.flow.Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
+    override fun observeTotalStreetCount(): kotlinx.coroutines.flow.Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
 }
 
 private class FakeRoutingEngine : com.streeter.domain.engine.RoutingEngine {

@@ -6,6 +6,7 @@ import com.streeter.data.local.entity.WalkStreetEntity
 import com.streeter.data.local.mapper.*
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.StreetRepository
+import kotlinx.coroutines.flow.Flow
 import javax.inject.Inject
 
 class StreetRepositoryImpl @Inject constructor(
@@ -43,4 +44,11 @@ class StreetRepositoryImpl @Inject constructor(
 
     override suspend fun getStreetCoverageForWalk(walkId: Long): List<WalkStreetCoverage> =
         dao.getWalkCoverage(walkId).map { it.toCoverage() }
+
+    override suspend fun getStreetCountForWalk(walkId: Long): Int =
+        dao.getStreetCountForWalk(walkId)
+
+    override fun observeCoveredStreetCount(): Flow<Int> = dao.observeCoveredStreetCount()
+
+    override fun observeTotalStreetCount(): Flow<Int> = dao.observeTotalStreetCount()
 }

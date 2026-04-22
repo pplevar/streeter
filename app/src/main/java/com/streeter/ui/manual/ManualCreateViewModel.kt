@@ -137,7 +137,7 @@ class ManualCreateViewModel @Inject constructor(
             it.copy(
                 segmentGeometries = it.segmentGeometries + routeResult.geometryJson,
                 segmentDistances = it.segmentDistances + routeResult.distanceM,
-                segmentWayIds = it.segmentWayIds + routeResult.wayIds,
+                segmentWayIds = it.segmentWayIds + listOf(routeResult.wayIds),
                 step = ManualCreateStep.PLACING_NEXT_POINT,
                 isRouting = false
             )
@@ -286,7 +286,7 @@ class ManualCreateViewModel @Inject constructor(
             }
 
             val coordsString = allCoords.joinToString(",")
-            """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coordsString]},"properties":{}}"""
+            return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coordsString]},"properties":{}}"""
         }
     }
 }
