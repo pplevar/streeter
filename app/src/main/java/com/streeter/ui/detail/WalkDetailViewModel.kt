@@ -115,7 +115,8 @@ class WalkDetailViewModel @Inject constructor(
     private fun observeCoverage() {
         viewModelScope.launch {
             walkRepository.getWalkWithCoverage(walkId).collect { coverage ->
-                _uiState.update { it.copy(streetCoverage = coverage) }
+                val named = coverage.filter { !it.streetName.startsWith("Way ") }
+                _uiState.update { it.copy(streetCoverage = named) }
             }
         }
     }

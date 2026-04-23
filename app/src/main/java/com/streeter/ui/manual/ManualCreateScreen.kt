@@ -42,8 +42,16 @@ fun ManualCreateScreen(
         if (!granted) return@remember moscow
         try {
             val lm = context.getSystemService(LocationManager::class.java)
-            val loc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
-                ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
+            val maxAgeMs = 6 * 60 * 60 * 1000L // 6 hours
+            val now = System.currentTimeMillis()
+            val loc = listOf(
+                "fused",
+                LocationManager.GPS_PROVIDER,
+                LocationManager.NETWORK_PROVIDER
+            ).firstNotNullOfOrNull { provider ->
+                lm?.getLastKnownLocation(provider)
+                    ?.takeIf { now - it.time < maxAgeMs }
+            }
             loc?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) } ?: moscow
         } catch (_: Exception) { moscow }
     }
