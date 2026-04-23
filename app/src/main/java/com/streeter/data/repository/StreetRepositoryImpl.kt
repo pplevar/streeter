@@ -52,4 +52,24 @@ class StreetRepositoryImpl @Inject constructor(
     override fun observeCoveredStreetCount(): Flow<Int> = dao.observeCoveredStreetCount()
 
     override fun observeTotalStreetCount(): Flow<Int> = dao.observeTotalStreetCount()
+
+    override suspend fun getStreetById(streetId: Long): Street? =
+        dao.getStreetById(streetId)?.toDomain()
+
+    override suspend fun getCoveredLengthForStreet(streetId: Long): Double =
+        dao.getCoveredLengthForStreet(streetId)
+
+    override suspend fun getWalksForStreet(streetId: Long): List<StreetWalkEntry> =
+        dao.getWalksForStreet(streetId).map { row ->
+            StreetWalkEntry(
+                walkId = row.walkId,
+                walkDate = row.walkDate,
+                walkTitle = row.walkTitle,
+                walkedLengthM = row.walkedLengthM,
+                coveragePct = row.coveragePct
+            )
+        }
+
+    override suspend fun getCoveredSectionEdgeIdsForWalk(walkId: Long, streetId: Long): List<Long> =
+        dao.getCoveredSectionEdgeIdsForWalk(walkId, streetId)
 }

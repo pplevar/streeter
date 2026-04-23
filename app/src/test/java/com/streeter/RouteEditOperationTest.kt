@@ -151,6 +151,10 @@ private class FakeStreetRepository : com.streeter.domain.repository.StreetReposi
     override suspend fun getStreetCountForWalk(walkId: Long): Int = 0
     override fun observeCoveredStreetCount(): kotlinx.coroutines.flow.Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
     override fun observeTotalStreetCount(): kotlinx.coroutines.flow.Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
+    override suspend fun getStreetById(streetId: Long) = null
+    override suspend fun getCoveredLengthForStreet(streetId: Long) = 0.0
+    override suspend fun getWalksForStreet(streetId: Long) = emptyList<com.streeter.domain.model.StreetWalkEntry>()
+    override suspend fun getCoveredSectionEdgeIdsForWalk(walkId: Long, streetId: Long) = emptyList<Long>()
 }
 
 private class FakeRoutingEngine : com.streeter.domain.engine.RoutingEngine {
@@ -167,4 +171,6 @@ private class FakeRoutingEngine : com.streeter.domain.engine.RoutingEngine {
     override fun findNearestNamedStreet(edgeId: Long): String? = null
     override fun getEdgeLength(edgeId: Long): Double? = null
     override fun getStreetTotalLength(streetName: String): Double? = null
+    override fun getEdgeGeometry(edgeId: Long): String? = null
+    override fun getEdgeGeometriesForStreet(streetName: String): List<String> = emptyList()
 }

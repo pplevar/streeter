@@ -52,4 +52,15 @@ interface RoutingEngine {
      * The index is built lazily on first call and cached for subsequent lookups.
      */
     fun getStreetTotalLength(streetName: String): Double?
+
+    /**
+     * Returns a GeoJSON Feature (LineString) for the given graph edge, or null if unavailable.
+     */
+    fun getEdgeGeometry(edgeId: Long): String?
+
+    /**
+     * Returns GeoJSON Features for all edges in the graph that share [streetName].
+     * Used to render the full street extent regardless of walk coverage.
+     */
+    fun getEdgeGeometriesForStreet(streetName: String): List<String>
 }

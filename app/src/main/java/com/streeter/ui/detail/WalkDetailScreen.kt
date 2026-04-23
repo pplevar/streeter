@@ -1,6 +1,7 @@
 package com.streeter.ui.detail
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -72,6 +73,7 @@ private fun tierColors(tier: Tier, dark: Boolean): Pair<Color, Color> = when (ti
 fun WalkDetailScreen(
     onNavigateBack: () -> Unit,
     onEditRoute: (Long) -> Unit,
+    onStreetClick: (Long) -> Unit = {},
     viewModel: WalkDetailViewModel = hiltViewModel()
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -231,7 +233,8 @@ fun WalkDetailScreen(
                                 Spacer(Modifier.height(14.dp))
                                 StreetListCard(
                                     streets = uiState.streetCoverage,
-                                    dark = dark
+                                    dark = dark,
+                                    onStreetClick = onStreetClick
                                 )
                             }
                         }
@@ -486,7 +489,11 @@ private fun TierPill(
 }
 
 @Composable
-private fun StreetListCard(streets: List<WalkStreetCoverage>, dark: Boolean) {
+private fun StreetListCard(
+    streets: List<WalkStreetCoverage>,
+    dark: Boolean,
+    onStreetClick: (Long) -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -496,14 +503,18 @@ private fun StreetListCard(streets: List<WalkStreetCoverage>, dark: Boolean) {
     ) {
         Column {
             streets.forEach { street ->
-                StreetRow(street = street, dark = dark)
+                StreetRow(
+                    street = street,
+                    dark = dark,
+                    onClick = { onStreetClick(street.streetId) }
+                )
             }
         }
     }
 }
 
 @Composable
-private fun StreetRow(street: WalkStreetCoverage, dark: Boolean) {
+private fun StreetRow(street: WalkStreetCoverage, dark: Boolean, onClick: () -> Unit) {
     val tier = street.tier()
     val (color, bg) = tierColors(tier, dark)
     val pct = (street.coveragePct * 100).roundToInt().coerceIn(0, 100)
@@ -511,6 +522,8 @@ private fun StreetRow(street: WalkStreetCoverage, dark: Boolean) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)

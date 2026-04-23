@@ -15,4 +15,8 @@ interface StreetRepository {
     suspend fun getStreetCountForWalk(walkId: Long): Int
     fun observeCoveredStreetCount(): Flow<Int>
     fun observeTotalStreetCount(): Flow<Int>
+    suspend fun getStreetById(streetId: Long): Street?
+    suspend fun getCoveredLengthForStreet(streetId: Long): Double
+    suspend fun getWalksForStreet(streetId: Long): List<StreetWalkEntry>
+    suspend fun getCoveredSectionEdgeIdsForWalk(walkId: Long, streetId: Long): List<Long>
 }

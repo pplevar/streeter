@@ -64,7 +64,39 @@ interface StreetDao {
 
     @Query("SELECT COUNT(*) FROM streets")
     fun observeTotalStreetCount(): Flow<Int>
+
+    @Query("SELECT * FROM streets WHERE id = :streetId")
+    suspend fun getStreetById(streetId: Long): StreetEntity?
+
+    @Query("SELECT COALESCE(SUM(lengthM), 0.0) FROM street_sections WHERE streetId = :streetId")
+    suspend fun getCoveredLengthForStreet(streetId: Long): Double
+
+    @Query("""
+        SELECT ws.walkId, w.date AS walkDate, w.title AS walkTitle,
+               ws.walkedLengthM, ws.coveragePct
+        FROM walk_streets ws
+        INNER JOIN walks w ON ws.walkId = w.id
+        WHERE ws.streetId = :streetId AND w.status = 'COMPLETED'
+        ORDER BY w.date DESC
+    """)
+    suspend fun getWalksForStreet(streetId: Long): List<StreetWalkRow>
+
+    @Query("""
+        SELECT ss.fromNodeOsmId
+        FROM street_sections ss
+        INNER JOIN walk_sections ws ON ss.stableId = ws.sectionStableId
+        WHERE ss.streetId = :streetId AND ws.walkId = :walkId
+    """)
+    suspend fun getCoveredSectionEdgeIdsForWalk(walkId: Long, streetId: Long): List<Long>
 }
+
+data class StreetWalkRow(
+    val walkId: Long,
+    val walkDate: Long,
+    val walkTitle: String?,
+    val walkedLengthM: Double,
+    val coveragePct: Float
+)
 
 data class WalkStreetWithName(
     val id: Long,

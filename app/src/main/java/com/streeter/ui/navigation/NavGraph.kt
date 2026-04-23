@@ -15,6 +15,7 @@ import com.streeter.ui.manual.ManualCreateScreen
 import com.streeter.ui.privacy.PrivacyDisclosureScreen
 import com.streeter.ui.recording.RecordingScreen
 import com.streeter.ui.settings.SettingsScreen
+import com.streeter.ui.streetdetail.StreetDetailScreen
 
 @Composable
 fun StreeterNavGraph(navController: NavHostController) {
@@ -58,7 +59,19 @@ fun StreeterNavGraph(navController: NavHostController) {
                 onNavigateBack = { navController.popBackStack() },
                 onEditRoute = { walkId ->
                     navController.navigate(Screen.RouteEdit.createRoute(walkId))
+                },
+                onStreetClick = { streetId ->
+                    navController.navigate(Screen.StreetDetail.createRoute(streetId))
                 }
+            )
+        }
+
+        composable(
+            route = Screen.StreetDetail.route,
+            arguments = listOf(navArgument("streetId") { type = NavType.LongType })
+        ) {
+            StreetDetailScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
 

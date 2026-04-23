@@ -274,3 +274,60 @@ fun fitBoundsToGeometryJson(map: MapLibreMap, geojson: String) {
     }
 }
 
+fun fitBoundsToJson(map: MapLibreMap, geojson: String) {
+    try {
+        val root = org.json.JSONObject(geojson)
+        val builder = LatLngBounds.Builder()
+        var hasPoints = false
+
+        fun addLineCoords(coords: org.json.JSONArray) {
+            for (i in 0 until coords.length()) {
+                val c = coords.getJSONArray(i)
+                builder.include(LatLng(c.getDouble(1), c.getDouble(0)))
+                hasPoints = true
+            }
+        }
+
+        fun processGeometry(geometry: org.json.JSONObject) {
+            val coordinates = geometry.optJSONArray("coordinates") ?: return
+            if (coordinates.length() == 0) return
+            val first = coordinates.opt(0) ?: return
+            when {
+                first is org.json.JSONArray && first.opt(0) is Number -> addLineCoords(coordinates)
+                first is org.json.JSONArray -> {
+                    for (i in 0 until coordinates.length()) {
+                        addLineCoords(coordinates.getJSONArray(i))
+                    }
+                }
+                first is Number -> {
+                    builder.include(LatLng(coordinates.getDouble(1), coordinates.getDouble(0)))
+                    hasPoints = true
+                }
+            }
+        }
+
+        when (root.optString("type")) {
+            "FeatureCollection" -> {
+                val features = root.optJSONArray("features") ?: return
+                for (i in 0 until features.length()) {
+                    val geometry = features.getJSONObject(i).optJSONObject("geometry") ?: continue
+                    processGeometry(geometry)
+                }
+            }
+            "Feature" -> {
+                val geometry = root.optJSONObject("geometry") ?: return
+                processGeometry(geometry)
+            }
+            else -> processGeometry(root)
+        }
+
+        if (hasPoints) {
+            map.animateCamera(
+                org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(builder.build(), 64)
+            )
+        }
+    } catch (e: Exception) {
+        Timber.e(e, "Failed to fit bounds to JSON")
+    }
+}
+

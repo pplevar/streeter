@@ -38,6 +38,7 @@ class GraphHopperEngine @Inject constructor(
     private var graphBounds: com.graphhopper.util.shapes.BBox? = null
 
     @Volatile private var streetLengthIndex: Map<String, Double>? = null
+    @Volatile private var streetEdgeIndex: Map<String, List<Int>>? = null
 
     companion object {
         private const val OSM_ASSET_PATH = "osm/city.osm.pbf"
@@ -294,14 +295,23 @@ class GraphHopperEngine @Inject constructor(
     private fun ensureStreetIndex() {
         if (streetLengthIndex != null) return
         val gh = hopper ?: return
-        val index = mutableMapOf<String, Double>()
+        val lengthIndex = mutableMapOf<String, Double>()
+        val edgeIndex = mutableMapOf<String, MutableList<Int>>()
         val allEdges = gh.baseGraph.getAllEdges()
         while (allEdges.next()) {
             val name = allEdges.getName().takeIf { it.isNotBlank() } ?: continue
-            index[name] = (index[name] ?: 0.0) + allEdges.distance
+            lengthIndex[name] = (lengthIndex[name] ?: 0.0) + allEdges.distance
+            edgeIndex.getOrPut(name) { mutableListOf() }.add(allEdges.edge)
         }
-        streetLengthIndex = index
-        Timber.d("Street length index built: ${index.size} named streets")
+        streetLengthIndex = lengthIndex
+        streetEdgeIndex = edgeIndex
+        Timber.d("Street index built: ${lengthIndex.size} named streets")
+    }
+
+    override fun getEdgeGeometriesForStreet(streetName: String): List<String> {
+        ensureStreetIndex()
+        val edgeIds = streetEdgeIndex?.get(streetName) ?: return emptyList()
+        return edgeIds.mapNotNull { getEdgeGeometry(it.toLong()) }
     }
 
     override fun findNearestNamedStreet(edgeId: Long): String? {
@@ -330,6 +340,19 @@ class GraphHopperEngine @Inject constructor(
         } catch (_: Exception) {
             null
         }
+    }
+
+    override fun getEdgeGeometry(edgeId: Long): String? {
+        val gh = hopper ?: return null
+        return try {
+            val edge = gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE)
+            val points = edge.fetchWayGeometry(com.graphhopper.util.FetchMode.ALL)
+            if (points.size() < 2) return null
+            val coords = (0 until points.size()).joinToString(",") { i ->
+                "[${points.getLon(i)},${points.getLat(i)}]"
+            }
+            """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
+        } catch (_: Exception) { null }
     }
 
     private fun buildMatchedLineString(result: com.graphhopper.matching.MatchResult): String {
