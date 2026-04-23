@@ -37,10 +37,13 @@ class GraphHopperEngine @Inject constructor(
     private var initialized = false
     private var graphBounds: com.graphhopper.util.shapes.BBox? = null
 
+    @Volatile private var streetLengthIndex: Map<String, Double>? = null
+
     companion object {
         private const val OSM_ASSET_PATH = "osm/city.osm.pbf"
         // Bump when the cached graph format changes (e.g., LM profile added) to force a rebuild.
         private const val GRAPH_CACHE_VERSION = "v2-lm"
+        private const val NEAREST_STREET_MAX_HOPS = 3
     }
 
     override suspend fun isReady(): Boolean = initialized
@@ -271,6 +274,59 @@ class GraphHopperEngine @Inject constructor(
             gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE)
                 .getName()
                 .takeIf { it.isNotBlank() }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override fun getEdgeLength(edgeId: Long): Double? {
+        val gh = hopper ?: return null
+        return try {
+            gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE).distance.toDouble()
+        } catch (_: Exception) { null }
+    }
+
+    override fun getStreetTotalLength(streetName: String): Double? {
+        ensureStreetIndex()
+        return streetLengthIndex?.get(streetName)
+    }
+
+    private fun ensureStreetIndex() {
+        if (streetLengthIndex != null) return
+        val gh = hopper ?: return
+        val index = mutableMapOf<String, Double>()
+        val allEdges = gh.baseGraph.getAllEdges()
+        while (allEdges.next()) {
+            val name = allEdges.getName().takeIf { it.isNotBlank() } ?: continue
+            index[name] = (index[name] ?: 0.0) + allEdges.distance
+        }
+        streetLengthIndex = index
+        Timber.d("Street length index built: ${index.size} named streets")
+    }
+
+    override fun findNearestNamedStreet(edgeId: Long): String? {
+        val gh = hopper ?: return null
+        return try {
+            val edge = gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE)
+            val visited = HashSet<Int>()
+            val queue = ArrayDeque<Pair<Int, Int>>()
+            queue.add(edge.baseNode to 0)
+            queue.add(edge.adjNode to 0)
+
+            val explorer = gh.baseGraph.createEdgeExplorer()
+            while (queue.isNotEmpty()) {
+                val (nodeId, depth) = queue.removeFirst()
+                if (depth > NEAREST_STREET_MAX_HOPS || !visited.add(nodeId)) continue
+
+                val iter = explorer.setBaseNode(nodeId)
+                while (iter.next()) {
+                    if (iter.edge == edgeId.toInt()) continue
+                    val name = iter.getName().takeIf { it.isNotBlank() }
+                    if (name != null) return name
+                    if (depth < NEAREST_STREET_MAX_HOPS) queue.add(iter.adjNode to depth + 1)
+                }
+            }
+            null
         } catch (_: Exception) {
             null
         }

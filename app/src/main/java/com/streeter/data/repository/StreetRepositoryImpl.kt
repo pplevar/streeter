@@ -28,7 +28,8 @@ class StreetRepositoryImpl @Inject constructor(
     override suspend fun insertWalkStreetCoverage(coverage: WalkStreetCoverage) =
         dao.insertWalkStreet(WalkStreetEntity(
             walkId = coverage.walkId, streetId = coverage.streetId,
-            coveragePct = coverage.coveragePct
+            coveragePct = coverage.coveragePct,
+            walkedLengthM = coverage.walkedLengthM
         ))
 
     override suspend fun insertWalkSectionCoverage(coverage: WalkSectionCoverage) =

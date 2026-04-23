@@ -37,7 +37,8 @@ interface StreetDao {
     suspend fun deleteWalkSections(walkId: Long)
 
     @Query("""
-        SELECT ws.id, ws.walkId, ws.streetId, s.name as streetName, ws.coveragePct
+        SELECT ws.id, ws.walkId, ws.streetId, s.name as streetName,
+               ws.coveragePct, ws.walkedLengthM
         FROM walk_streets ws
         INNER JOIN streets s ON ws.streetId = s.id
         WHERE ws.walkId = :walkId
@@ -46,7 +47,8 @@ interface StreetDao {
     fun observeWalkCoverage(walkId: Long): Flow<List<WalkStreetWithName>>
 
     @Query("""
-        SELECT ws.id, ws.walkId, ws.streetId, s.name as streetName, ws.coveragePct
+        SELECT ws.id, ws.walkId, ws.streetId, s.name as streetName,
+               ws.coveragePct, ws.walkedLengthM
         FROM walk_streets ws
         INNER JOIN streets s ON ws.streetId = s.id
         WHERE ws.walkId = :walkId
@@ -69,5 +71,6 @@ data class WalkStreetWithName(
     val walkId: Long,
     val streetId: Long,
     val streetName: String,
-    val coveragePct: Float
+    val coveragePct: Float,
+    val walkedLengthM: Double
 )

@@ -164,4 +164,7 @@ private class FakeRoutingEngine : com.streeter.domain.engine.RoutingEngine {
         via: List<com.streeter.domain.model.LatLng>
     ) = Result.failure<com.streeter.domain.model.RouteResult>(UnsupportedOperationException("fake"))
     override fun getStreetName(edgeId: Long): String? = null
+    override fun findNearestNamedStreet(edgeId: Long): String? = null
+    override fun getEdgeLength(edgeId: Long): Double? = null
+    override fun getStreetTotalLength(streetName: String): Double? = null
 }

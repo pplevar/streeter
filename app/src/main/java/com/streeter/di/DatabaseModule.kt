@@ -20,6 +20,7 @@ object DatabaseModule {
     fun provideDatabase(@ApplicationContext context: Context): StreeterDatabase =
         Room.databaseBuilder(context, StreeterDatabase::class.java, "streeter_database")
             .enableMultiInstanceInvalidation()
+            .addMigrations(StreeterDatabase.MIGRATION_1_2)
             .build()
 
     @Provides fun provideWalkDao(db: StreeterDatabase): WalkDao = db.walkDao()

@@ -14,10 +14,10 @@ import javax.inject.Singleton
  * Computes street-level and section-level coverage from a matched route.
  *
  * Street identification flow:
- * 1. For each OSM way ID in matchedWayIds, look up the street name
- * 2. Split the way into sections at intersection nodes
- * 3. Compute what fraction of each section was traversed
- * 4. Roll up to street-level percentage (length-weighted)
+ * 1. For each OSM way ID in matchedWayIds, look up the street name and real edge length
+ * 2. Accumulate walked length per street name
+ * 3. Compute coverage % = walkedLength / totalStreetLength (from GraphHopper index)
+ * 4. Persist WalkStreetCoverage records with accurate percentages and walked distances
  */
 @Singleton
 class StreetCoverageEngine @Inject constructor(
@@ -28,8 +28,7 @@ class StreetCoverageEngine @Inject constructor(
     private data class WayResult(
         val streetId: Long,
         val streetName: String,
-        val sections: List<StreetSection>,
-        val sectionCoverages: Map<String, Float>
+        val edgeLengthM: Double
     )
 
     /**
@@ -67,9 +66,9 @@ class StreetCoverageEngine @Inject constructor(
         // Aggregate ways that share the same street name into one coverage record
         val byStreetName = wayResults.groupBy { it.streetName }
         for ((streetName, results) in byStreetName) {
-            val allSections = results.flatMap { it.sections }
-            val allCoverages = results.fold(emptyMap<String, Float>()) { acc, r -> acc + r.sectionCoverages }
-            val streetPct = streetCoverage(allSections, allCoverages)
+            val walkedLengthM = results.sumOf { it.edgeLengthM }
+            val totalLengthM = routingEngine.getStreetTotalLength(streetName) ?: walkedLengthM
+            val coveragePct = (walkedLengthM / totalLengthM).toFloat().coerceIn(0f, 1f)
             val representativeStreetId = results.first().streetId
 
             streetRepository.insertWalkStreetCoverage(
@@ -77,7 +76,8 @@ class StreetCoverageEngine @Inject constructor(
                     walkId = walkId,
                     streetId = representativeStreetId,
                     streetName = streetName,
-                    coveragePct = streetPct
+                    coveragePct = coveragePct,
+                    walkedLengthM = walkedLengthM
                 )
             )
         }
@@ -86,7 +86,11 @@ class StreetCoverageEngine @Inject constructor(
     }
 
     private suspend fun processWayId(wayId: Long, walkId: Long, md5Digest: MessageDigest): WayResult {
-        val streetName = routingEngine.getStreetName(wayId) ?: "Way $wayId"
+        val streetName = routingEngine.getStreetName(wayId)
+            ?: routingEngine.findNearestNamedStreet(wayId)
+            ?: "Way $wayId"
+        val edgeLengthM = routingEngine.getEdgeLength(wayId) ?: 100.0
+        val totalLengthM = routingEngine.getStreetTotalLength(streetName) ?: edgeLengthM
         val now = System.currentTimeMillis()
         val nameHash = md5(streetName, md5Digest)
 
@@ -94,13 +98,12 @@ class StreetCoverageEngine @Inject constructor(
             Street(
                 osmWayId = wayId,
                 name = streetName,
-                cityTotalLengthM = 100.0, // Placeholder
+                cityTotalLengthM = totalLengthM,
                 osmDataVersion = now,
                 osmNameHash = nameHash
             )
         )
 
-        // Create a single section for this way (placeholder: real impl splits at intersections)
         val stableId = generateStableId(streetName, wayId, wayId + 1, md5Digest)
         val existingSection = streetRepository.getSectionByStableId(stableId)
 
@@ -110,7 +113,7 @@ class StreetCoverageEngine @Inject constructor(
                     streetId = streetId,
                     fromNodeOsmId = wayId,
                     toNodeOsmId = wayId + 1,
-                    lengthM = 100.0,
+                    lengthM = edgeLengthM,
                     geometryJson = "",
                     stableId = stableId,
                     isOrphaned = false
@@ -118,23 +121,19 @@ class StreetCoverageEngine @Inject constructor(
             )
         }
 
-        // For now, mark this section as 100% covered since the route passed through it
-        val coverage = 1.0f
         streetRepository.insertWalkSectionCoverage(
-            WalkSectionCoverage(walkId = walkId, sectionStableId = stableId, coveredPct = coverage)
+            WalkSectionCoverage(walkId = walkId, sectionStableId = stableId, coveredPct = 1.0f)
         )
 
-        val sections = streetRepository.getSectionsByStreetId(streetId)
         return WayResult(
             streetId = streetId,
             streetName = streetName,
-            sections = sections,
-            sectionCoverages = mapOf(stableId to coverage)
+            edgeLengthM = edgeLengthM
         )
     }
 
     /**
-     * Street-level rollup: length-weighted average of section coverages.
+     * Length-weighted average of section coverages. Exposed for unit testing.
      */
     fun streetCoverage(sections: List<StreetSection>, coverages: Map<String, Float>): Float {
         val totalLen = sections.sumOf { it.lengthM }

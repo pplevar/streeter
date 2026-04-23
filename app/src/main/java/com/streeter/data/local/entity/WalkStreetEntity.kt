@@ -19,5 +19,6 @@ data class WalkStreetEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val walkId: Long,
     val streetId: Long,
-    val coveragePct: Float
+    val coveragePct: Float,
+    val walkedLengthM: Double = 0.0
 )

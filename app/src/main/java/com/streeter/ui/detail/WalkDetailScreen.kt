@@ -530,7 +530,12 @@ private fun StreetRow(street: WalkStreetCoverage, dark: Boolean) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
-            Spacer(Modifier.height(6.dp))
+            Text(
+                text = formatDistance(street.walkedLengthM),
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(4.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()

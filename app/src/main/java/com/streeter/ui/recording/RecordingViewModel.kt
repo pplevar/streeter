@@ -39,6 +39,9 @@ class RecordingViewModel @Inject constructor(
     private val _elapsedMs = MutableStateFlow(0L)
     val elapsedMs: StateFlow<Long> = _elapsedMs.asStateFlow()
 
+    private val _isWalkStarted = MutableStateFlow(false)
+    val isWalkStarted: StateFlow<Boolean> = _isWalkStarted.asStateFlow()
+
     val distanceM: StateFlow<Double> = _gpsPoints
         .map { points ->
             points.filter { !it.isFiltered }
@@ -67,19 +70,16 @@ class RecordingViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             val activeWalk = walkRepository.getActiveRecordingWalk()
-            _walkStartMs.value = activeWalk?.date ?: System.currentTimeMillis()
-            val serviceIntent = Intent(context, LocationService::class.java).apply {
-                if (activeWalk != null) {
+            if (activeWalk != null) {
+                _walkStartMs.value = activeWalk.date
+                _isWalkStarted.value = true
+                val serviceIntent = Intent(context, LocationService::class.java).apply {
                     action = LocationService.ACTION_RESUME_WALK
                     putExtra(LocationService.EXTRA_WALK_ID, activeWalk.id)
-                } else {
-                    action = LocationService.ACTION_START_WALK
                 }
+                context.startForegroundService(serviceIntent)
+                bindToService()
             }
-            context.startForegroundService(serviceIntent)
-
-            val bindIntent = Intent(context, LocationService::class.java)
-            isBound = context.bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
         }
 
         viewModelScope.launch {
@@ -91,6 +91,17 @@ class RecordingViewModel @Inject constructor(
         }
     }
 
+    fun startWalk() {
+        if (_isWalkStarted.value) return
+        _walkStartMs.value = System.currentTimeMillis()
+        _isWalkStarted.value = true
+        val serviceIntent = Intent(context, LocationService::class.java).apply {
+            action = LocationService.ACTION_START_WALK
+        }
+        context.startForegroundService(serviceIntent)
+        bindToService()
+    }
+
     fun stopWalk(): Long {
         val walkId = locationService?.getCurrentWalkId() ?: -1L
         val stopIntent = Intent(context, LocationService::class.java).apply {
@@ -99,6 +110,11 @@ class RecordingViewModel @Inject constructor(
         context.startService(stopIntent)
         unbind()
         return walkId
+    }
+
+    private fun bindToService() {
+        val bindIntent = Intent(context, LocationService::class.java)
+        isBound = context.bindService(bindIntent, serviceConnection, Context.BIND_AUTO_CREATE)
     }
 
     private fun unbind() {

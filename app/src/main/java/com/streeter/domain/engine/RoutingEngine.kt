@@ -34,4 +34,22 @@ interface RoutingEngine {
      * Returns null if the engine is not initialized or the edge has no name.
      */
     fun getStreetName(edgeId: Long): String?
+
+    /**
+     * Returns the name of a nearby named street for an otherwise unnamed edge.
+     * Performs a graph-bounded BFS up to a small hop limit; returns null if none found.
+     */
+    fun findNearestNamedStreet(edgeId: Long): String?
+
+    /**
+     * Returns the length in metres of the given graph edge, or null if unavailable.
+     */
+    fun getEdgeLength(edgeId: Long): Double?
+
+    /**
+     * Returns the total length in metres of all graph edges that share [streetName].
+     * Returns null if the engine is not initialized or the street is not in the graph.
+     * The index is built lazily on first call and cached for subsequent lookups.
+     */
+    fun getStreetTotalLength(streetName: String): Double?
 }

@@ -34,19 +34,21 @@ fun RecordingScreen(
     val gpsPoints by viewModel.gpsPoints.collectAsState()
     val elapsedMs by viewModel.elapsedMs.collectAsState()
     val distanceM by viewModel.distanceM.collectAsState()
+    val isWalkStarted by viewModel.isWalkStarted.collectAsState()
     val context = LocalContext.current
     val initialLatLng = remember {
+        val moscow = LatLng(55.7558, 37.6173)
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
-        if (!granted) return@remember null
+        if (!granted) return@remember moscow
         try {
             val lm = context.getSystemService(LocationManager::class.java)
             val loc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                 ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            loc?.let { LatLng(it.latitude, it.longitude) }
-        } catch (_: Exception) { null }
+            loc?.let { LatLng(it.latitude, it.longitude) } ?: moscow
+        } catch (_: Exception) { moscow }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -54,8 +56,8 @@ fun RecordingScreen(
             modifier = Modifier.fillMaxSize(),
             styleUrl = MAP_STYLE_URL,
             gpsPoints = gpsPoints,
-            followLocation = true,
-            showCurrentPosition = true,
+            followLocation = isWalkStarted,
+            showCurrentPosition = isWalkStarted,
             initialLatLng = initialLatLng
         )
 
@@ -79,112 +81,137 @@ fun RecordingScreen(
             }
         }
 
-        // REC indicator chip
-        Row(
-            modifier = Modifier
-                .statusBarsPadding()
-                .padding(16.dp)
-                .align(Alignment.TopEnd)
-                .clip(RoundedCornerShape(18.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainer)
-                .padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(8.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background(MaterialTheme.colorScheme.error)
-            )
-            Text(
-                text = "REC",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 0.2.sp,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "·",
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = formatElapsed(elapsedMs),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-
-        // Bottom metrics card
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .navigationBarsPadding()
-                .padding(16.dp)
-                .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surfaceContainerLowest)
-                .padding(22.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        if (isWalkStarted) {
+            // REC indicator chip
             Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier
+                    .statusBarsPadding()
+                    .padding(16.dp)
+                    .align(Alignment.TopEnd)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainer)
+                    .padding(horizontal = 14.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MetricBlock(
-                    value = formatDistanceValue(distanceM),
-                    unit = formatDistanceUnit(distanceM),
-                    label = "Distance",
-                    modifier = Modifier.weight(1f)
-                )
                 Box(
                     modifier = Modifier
-                        .width(1.dp)
-                        .height(40.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant)
+                        .size(8.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(MaterialTheme.colorScheme.error)
                 )
-                MetricBlock(
-                    value = formatElapsed(elapsedMs),
-                    unit = "",
-                    label = "Duration",
-                    modifier = Modifier.weight(1f)
+                Text(
+                    text = "REC",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.2.sp,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .height(40.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant)
+                Text(
+                    text = "·",
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                MetricBlock(
-                    value = "${gpsPoints.size}",
-                    unit = "pts",
-                    label = "GPS",
-                    modifier = Modifier.weight(1f)
+                Text(
+                    text = formatElapsed(elapsedMs),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
-            Button(
-                onClick = {
-                    val walkId = viewModel.stopWalk()
-                    onStopAndNavigate(walkId)
-                },
+            // Bottom metrics + stop button
+            Column(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(28.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                )
+                    .navigationBarsPadding()
+                    .padding(16.dp)
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+                    .padding(22.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = stringResource(R.string.label_stop_walk),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    MetricBlock(
+                        value = formatDistanceValue(distanceM),
+                        unit = formatDistanceUnit(distanceM),
+                        label = "Distance",
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(40.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+                    MetricBlock(
+                        value = formatElapsed(elapsedMs),
+                        unit = "",
+                        label = "Duration",
+                        modifier = Modifier.weight(1f)
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(40.dp)
+                            .background(MaterialTheme.colorScheme.outlineVariant)
+                    )
+                    MetricBlock(
+                        value = "${gpsPoints.size}",
+                        unit = "pts",
+                        label = "GPS",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+
+                Button(
+                    onClick = {
+                        val walkId = viewModel.stopWalk()
+                        onStopAndNavigate(walkId)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    Text(
+                        text = stringResource(R.string.label_stop_walk),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        } else {
+            // Pre-walk: Start Walk button
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .padding(16.dp)
+            ) {
+                Button(
+                    onClick = { viewModel.startWalk() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(28.dp)
+                ) {
+                    Text(
+                        text = "Start Walk",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
             }
         }
     }

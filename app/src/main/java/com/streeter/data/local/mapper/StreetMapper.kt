@@ -30,5 +30,6 @@ fun StreetSection.toEntity() = StreetSectionEntity(
 
 fun WalkStreetWithName.toCoverage() = WalkStreetCoverage(
     id = id, walkId = walkId, streetId = streetId,
-    streetName = streetName, coveragePct = coveragePct
+    streetName = streetName, coveragePct = coveragePct,
+    walkedLengthM = walkedLengthM
 )

@@ -5,5 +5,6 @@ data class WalkStreetCoverage(
     val walkId: Long,
     val streetId: Long,
     val streetName: String,
-    val coveragePct: Float
+    val coveragePct: Float,
+    val walkedLengthM: Double = 0.0
 )

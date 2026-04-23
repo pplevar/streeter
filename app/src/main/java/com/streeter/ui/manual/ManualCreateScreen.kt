@@ -34,17 +34,18 @@ fun ManualCreateScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
     val initialLatLng = remember {
+        val moscow = org.maplibre.android.geometry.LatLng(55.7558, 37.6173)
         val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
                 PackageManager.PERMISSION_GRANTED
-        if (!granted) return@remember null
+        if (!granted) return@remember moscow
         try {
             val lm = context.getSystemService(LocationManager::class.java)
             val loc = lm?.getLastKnownLocation(LocationManager.GPS_PROVIDER)
                 ?: lm?.getLastKnownLocation(LocationManager.NETWORK_PROVIDER)
-            loc?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) }
-        } catch (_: Exception) { null }
+            loc?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) } ?: moscow
+        } catch (_: Exception) { moscow }
     }
 
     LaunchedEffect(uiState.createdWalkId) {
