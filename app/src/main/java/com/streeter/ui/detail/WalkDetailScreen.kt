@@ -26,6 +26,11 @@ import com.streeter.R
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.model.WalkStreetCoverage
+import com.streeter.ui.map.MAP_STYLE_URL
+import com.streeter.ui.map.MapLibreMapView
+import com.streeter.ui.map.buildLineStringGeoJson
+import com.streeter.ui.map.fitBoundsToGeometryJson
+import org.maplibre.android.maps.MapLibreMap
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -71,6 +76,7 @@ fun WalkDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
+    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
 
     LaunchedEffect(uiState.isDeleted) {
         if (uiState.isDeleted) onNavigateBack()
@@ -81,6 +87,15 @@ fun WalkDetailScreen(
             snackbarHostState.showSnackbar(it)
             viewModel.clearError()
         }
+    }
+
+    LaunchedEffect(mapRef, uiState.routeGeometryJson, uiState.gpsPoints) {
+        val map = mapRef ?: return@LaunchedEffect
+        val json = uiState.routeGeometryJson
+            ?: uiState.gpsPoints.filter { !it.isFiltered }.takeIf { it.size >= 2 }
+                ?.let { buildLineStringGeoJson(it) }
+            ?: return@LaunchedEffect
+        fitBoundsToGeometryJson(map, json)
     }
 
     if (uiState.showDeleteConfirm) {
@@ -157,7 +172,21 @@ fun WalkDetailScreen(
 
                         item {
                             Spacer(Modifier.height(16.dp))
-                            MapPreviewPlaceholder()
+                            MapLibreMapView(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(200.dp)
+                                    .clip(RoundedCornerShape(28.dp)),
+                                styleUrl = MAP_STYLE_URL,
+                                gpsPoints = uiState.gpsPoints,
+                                routeGeometryJson = uiState.routeGeometryJson,
+                                onMapReady = { map ->
+                                    map.uiSettings.isScrollGesturesEnabled = false
+                                    map.uiSettings.isZoomGesturesEnabled = false
+                                    map.uiSettings.isTiltGesturesEnabled = false
+                                    mapRef = map
+                                }
+                            )
                         }
 
                         item {
@@ -245,23 +274,6 @@ private fun WalkHeroHeader(walk: com.streeter.domain.model.Walk) {
     }
 }
 
-@Composable
-private fun MapPreviewPlaceholder() {
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(160.dp)
-            .clip(RoundedCornerShape(28.dp))
-            .background(MaterialTheme.colorScheme.surfaceContainerLow),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = "Route map",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-    }
-}
 
 @Composable
 private fun WalkMetricRow(walk: com.streeter.domain.model.Walk, streetCount: Int) {

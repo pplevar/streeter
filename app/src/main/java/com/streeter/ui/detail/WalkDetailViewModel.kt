@@ -8,6 +8,8 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
+import com.streeter.domain.repository.GpsPointRepository
+import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.work.MapMatchingWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -22,6 +24,8 @@ import javax.inject.Inject
 data class WalkDetailUiState(
     val walk: Walk? = null,
     val streetCoverage: List<WalkStreetCoverage> = emptyList(),
+    val routeGeometryJson: String? = null,
+    val gpsPoints: List<GpsPoint> = emptyList(),
     val isLoading: Boolean = true,
     val isDeleted: Boolean = false,
     val errorMessage: String? = null,
@@ -34,6 +38,8 @@ data class WalkDetailUiState(
 class WalkDetailViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
     private val walkRepository: WalkRepository,
+    private val routeSegmentRepository: RouteSegmentRepository,
+    private val gpsPointRepository: GpsPointRepository,
     private val workManager: WorkManager,
     private val routingEngine: RoutingEngine
 ) : ViewModel() {
@@ -47,7 +53,17 @@ class WalkDetailViewModel @Inject constructor(
         loadWalkDetail()
         observeCoverage()
         observeWorkerProgress()
+        loadRouteData()
         preWarmEngine()
+    }
+
+    private fun loadRouteData() {
+        viewModelScope.launch {
+            val segments = routeSegmentRepository.getSegmentsForWalk(walkId)
+            val geometry = segments.firstOrNull()?.geometryJson
+            val points = if (geometry == null) gpsPointRepository.getPointsForWalk(walkId) else emptyList()
+            _uiState.update { it.copy(routeGeometryJson = geometry, gpsPoints = points) }
+        }
     }
 
     /**
@@ -92,7 +108,12 @@ class WalkDetailViewModel @Inject constructor(
         // Live observation so the UI reacts when the worker completes the walk
         viewModelScope.launch {
             walkRepository.observeWalk(walkId).collect { walk ->
+                val prevStatus = _uiState.value.walk?.status
                 _uiState.update { it.copy(walk = walk) }
+                // Reload route geometry once matching completes
+                if (prevStatus == WalkStatus.PENDING_MATCH && walk?.status == WalkStatus.COMPLETED) {
+                    loadRouteData()
+                }
             }
         }
     }
