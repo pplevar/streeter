@@ -74,6 +74,13 @@ class MapMatchingWorker
                         Timber.w("Walk $walkId not found")
                         return@withContext Result.failure()
                     }
+                    if (walk.status == WalkStatus.DELETED) {
+                        Timber.w("Walk $walkId is DELETED, aborting map matching")
+                        pendingMatchJobRepository.getJobForWalk(walkId)?.let {
+                            pendingMatchJobRepository.updateJob(it.copy(status = JobStatus.DONE))
+                        }
+                        return@withContext Result.failure()
+                    }
 
                     var matchedDistanceM = 0.0
                     val wayIds: List<Long> =
