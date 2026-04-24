@@ -73,6 +73,7 @@ class MapMatchingWorker @AssistedInject constructor(
                 return@withContext Result.failure()
             }
 
+            var matchedDistanceM = 0.0
             val wayIds: List<Long> = if (walk.source == WalkSource.RECORDED) {
                 // GPS trace → map match → get way IDs
                 val points = gpsPointRepository.getPointsForWalk(walkId).filter { !it.isFiltered }
@@ -106,6 +107,7 @@ class MapMatchingWorker @AssistedInject constructor(
                         segmentOrder = 0
                     )
                 )
+                matchedDistanceM = matched.distanceM
                 matched.matchedWayIds
             } else {
                 // Manual walk — use pre-existing segments built by the route editor
@@ -116,6 +118,7 @@ class MapMatchingWorker @AssistedInject constructor(
                     return@withContext Result.success()
                 }
                 setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Route segments loaded…"))
+                matchedDistanceM = segments.sumOf { geometryDistanceM(it.geometryJson) }
                 segments.flatMap { parseWayIds(it.matchedWayIds) }
             }
 
@@ -130,7 +133,7 @@ class MapMatchingWorker @AssistedInject constructor(
             )
 
             setProgress(workDataOf(KEY_PROGRESS to 95, KEY_STEP to "Finalizing…"))
-            completeWalk(walkId)
+            completeWalk(walkId, matchedDistanceM.takeIf { it > 0.0 })
             pendingMatchJobRepository.getJobForWalk(walkId)?.let {
                 pendingMatchJobRepository.updateJob(it.copy(status = JobStatus.DONE))
             }
@@ -168,12 +171,37 @@ class MapMatchingWorker @AssistedInject constructor(
         }
     }
 
-    private suspend fun completeWalk(walkId: Long) {
+    private suspend fun completeWalk(walkId: Long, distanceM: Double? = null) {
         walkRepository.getWalkById(walkId)?.let { walk ->
             walkRepository.updateWalk(
-                walk.copy(status = WalkStatus.COMPLETED, updatedAt = System.currentTimeMillis())
+                walk.copy(
+                    status = WalkStatus.COMPLETED,
+                    distanceM = distanceM ?: walk.distanceM,
+                    updatedAt = System.currentTimeMillis()
+                )
             )
         }
+    }
+
+    private fun geometryDistanceM(geometryJson: String): Double {
+        return try {
+            val obj = org.json.JSONObject(geometryJson)
+            val arr = obj.getJSONObject("geometry").getJSONArray("coordinates")
+            if (arr.length() < 2) return 0.0
+            val results = FloatArray(1)
+            var total = 0.0
+            for (i in 0 until arr.length() - 1) {
+                val a = arr.getJSONArray(i)
+                val b = arr.getJSONArray(i + 1)
+                android.location.Location.distanceBetween(
+                    a.getDouble(1), a.getDouble(0),
+                    b.getDouble(1), b.getDouble(0),
+                    results
+                )
+                total += results[0]
+            }
+            total
+        } catch (_: Exception) { 0.0 }
     }
 
     private fun parseWayIds(json: String): List<Long> {

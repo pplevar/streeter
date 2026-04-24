@@ -164,7 +164,8 @@ class GraphHopperEngine @Inject constructor(
                 Result.success(MatchResult(
                     snappedPoints = points.map { LatLng(it.lat, it.lng) },
                     matchedWayIds = wayIds,
-                    routeGeometryJson = geometry
+                    routeGeometryJson = geometry,
+                    distanceM = matchResult.mergedPath.distance
                 ))
             } catch (e: Exception) {
                 Timber.e(e, "Map matching failed")
