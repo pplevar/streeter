@@ -47,7 +47,8 @@ fun ManualCreateScreen(
             if (!granted) return@remember moscow
             try {
                 val lm = context.getSystemService(LocationManager::class.java)
-                val maxAgeMs = 6 * 60 * 60 * 1000L // 6 hours
+//                val maxAgeMs = 6 * 60 * 60 * 1000L // 6 hours
+                val maxAgeMs = 1000L // 1 sec
                 val now = System.currentTimeMillis()
                 val loc =
                     listOf(
