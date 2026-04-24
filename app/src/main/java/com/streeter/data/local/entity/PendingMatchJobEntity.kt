@@ -7,13 +7,15 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "pending_match_jobs",
-    foreignKeys = [ForeignKey(
-        entity = WalkEntity::class,
-        parentColumns = ["id"],
-        childColumns = ["walkId"],
-        onDelete = ForeignKey.CASCADE
-    )],
-    indices = [Index("walkId")]
+    foreignKeys = [
+        ForeignKey(
+            entity = WalkEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["walkId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("walkId")],
 )
 data class PendingMatchJobEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -21,5 +23,5 @@ data class PendingMatchJobEntity(
     val queuedAt: Long,
     val status: String,
     val retryCount: Int = 0,
-    val lastError: String? = null
+    val lastError: String? = null,
 )

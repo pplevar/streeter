@@ -36,7 +36,6 @@ import javax.inject.Inject
 
 @AndroidEntryPoint
 class LocationService : LifecycleService() {
-
     companion object {
         const val ACTION_START_WALK = "com.streeter.ACTION_START_WALK"
         const val ACTION_STOP_WALK = "com.streeter.ACTION_STOP_WALK"
@@ -50,7 +49,9 @@ class LocationService : LifecycleService() {
     }
 
     @Inject lateinit var walkRepository: WalkRepository
+
     @Inject lateinit var gpsPointRepository: GpsPointRepository
+
     @Inject lateinit var pendingMatchJobRepository: PendingMatchJobRepository
 
     // Lazily obtained to avoid triggering WorkManager initialization during Hilt setup
@@ -64,6 +65,7 @@ class LocationService : LifecycleService() {
     private var currentWalkId: Long = -1L
 
     fun getCurrentWalkId(): Long = currentWalkId
+
     private var lastKeptPoint: GpsPoint? = null
     private val pendingPoints = mutableListOf<GpsPoint>()
     private var maxSpeedKmh: Float = 50f
@@ -89,7 +91,11 @@ class LocationService : LifecycleService() {
         return binder
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+    override fun onStartCommand(
+        intent: Intent?,
+        flags: Int,
+        startId: Int,
+    ): Int {
         super.onStartCommand(intent, flags, startId)
         when (intent?.action) {
             ACTION_START_WALK -> startWalk()
@@ -109,18 +115,19 @@ class LocationService : LifecycleService() {
 
         lifecycleScope.launch {
             val now = System.currentTimeMillis()
-            val walkId = walkRepository.insertWalk(
-                Walk(
-                    title = null,
-                    date = now,
-                    durationMs = 0L,
-                    distanceM = 0.0,
-                    status = WalkStatus.RECORDING,
-                    source = WalkSource.RECORDED,
-                    createdAt = now,
-                    updatedAt = now
+            val walkId =
+                walkRepository.insertWalk(
+                    Walk(
+                        title = null,
+                        date = now,
+                        durationMs = 0L,
+                        distanceM = 0.0,
+                        status = WalkStatus.RECORDING,
+                        source = WalkSource.RECORDED,
+                        createdAt = now,
+                        updatedAt = now,
+                    ),
                 )
-            )
             currentWalkId = walkId
             _isRecording.value = true
             startLocationUpdates()
@@ -153,8 +160,8 @@ class LocationService : LifecycleService() {
                         it.copy(
                             status = WalkStatus.PENDING_MATCH,
                             durationMs = now - it.date,
-                            updatedAt = now
-                        )
+                            updatedAt = now,
+                        ),
                     )
                 }
                 pendingMatchJobRepository.enqueue(
@@ -163,13 +170,13 @@ class LocationService : LifecycleService() {
                         queuedAt = System.currentTimeMillis(),
                         status = JobStatus.QUEUED,
                         retryCount = 0,
-                        lastError = null
-                    )
+                        lastError = null,
+                    ),
                 )
                 workManager.enqueueUniqueWork(
                     "match_$walkId",
                     ExistingWorkPolicy.KEEP,
-                    MapMatchingWorker.buildRequest(walkId)
+                    MapMatchingWorker.buildRequest(walkId),
                 )
                 Timber.w("Walk stopped: id=%d → PENDING_MATCH, worker enqueued", walkId)
             } else {
@@ -185,29 +192,32 @@ class LocationService : LifecycleService() {
 
     private fun startLocationUpdates() {
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
-        val request = LocationRequest.Builder(
-            Priority.PRIORITY_HIGH_ACCURACY,
-            sampleIntervalSeconds * 1000L
-        )
-            .setMinUpdateIntervalMillis(sampleIntervalSeconds * 500L)
-            .build()
+        val request =
+            LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                sampleIntervalSeconds * 1000L,
+            )
+                .setMinUpdateIntervalMillis(sampleIntervalSeconds * 500L)
+                .build()
 
-        locationCallback = object : LocationCallback() {
-            override fun onLocationResult(result: LocationResult) {
-                result.lastLocation?.let { location ->
-                    val point = GpsPoint(
-                        walkId = currentWalkId,
-                        lat = location.latitude,
-                        lng = location.longitude,
-                        timestamp = location.time,
-                        accuracyM = location.accuracy,
-                        speedKmh = location.speed * 3.6f,
-                        isFiltered = false
-                    )
-                    handleNewPoint(point)
+        locationCallback =
+            object : LocationCallback() {
+                override fun onLocationResult(result: LocationResult) {
+                    result.lastLocation?.let { location ->
+                        val point =
+                            GpsPoint(
+                                walkId = currentWalkId,
+                                lat = location.latitude,
+                                lng = location.longitude,
+                                timestamp = location.time,
+                                accuracyM = location.accuracy,
+                                speedKmh = location.speed * 3.6f,
+                                isFiltered = false,
+                            )
+                        handleNewPoint(point)
+                    }
                 }
             }
-        }
 
         try {
             fusedClient?.requestLocationUpdates(request, locationCallback!!, mainLooper)
@@ -245,8 +255,9 @@ class LocationService : LifecycleService() {
 
     private fun acquireWakeLock() {
         val pm = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "streeter:flush")
-            .apply { acquire(5_000L) }
+        wakeLock =
+            pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "streeter:flush")
+                .apply { acquire(5_000L) }
     }
 
     private fun releaseWakeLock() {
@@ -260,21 +271,24 @@ class LocationService : LifecycleService() {
     }
 
     private fun createNotificationChannel() {
-        val channel = NotificationChannel(
-            CHANNEL_ID,
-            getString(R.string.notification_channel_recording),
-            NotificationManager.IMPORTANCE_LOW
-        )
+        val channel =
+            NotificationChannel(
+                CHANNEL_ID,
+                getString(R.string.notification_channel_recording),
+                NotificationManager.IMPORTANCE_LOW,
+            )
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(channel)
     }
 
     private fun buildNotification(): Notification {
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE
-        )
+        val pendingIntent =
+            PendingIntent.getActivity(
+                this,
+                0,
+                Intent(this, MainActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE,
+            )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle(getString(R.string.notification_recording_title))
             .setContentText(getString(R.string.notification_recording_text))

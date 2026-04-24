@@ -18,44 +18,46 @@ import javax.inject.Singleton
  * Bundle assets/tiles/city.pmtiles before the production build.
  */
 @Singleton
-class TileServerManager @Inject constructor(
-    @ApplicationContext private val context: Context
-) {
-    private var server: TileServer? = null
-    private val _port = AtomicInteger(0)
+class TileServerManager
+    @Inject
+    constructor(
+        @ApplicationContext private val context: Context,
+    ) {
+        private var server: TileServer? = null
+        private val _port = AtomicInteger(0)
 
-    val port: Int get() = _port.get()
-    val baseUrl: String get() = "http://127.0.0.1:$port"
+        val port: Int get() = _port.get()
+        val baseUrl: String get() = "http://127.0.0.1:$port"
 
-    fun start() {
-        if (server != null) return
-        val s = TileServer(context, 0) // 0 = OS assigns free port
-        s.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-        _port.set(s.listeningPort)
-        server = s
-        Timber.d("TileServer started on port ${_port.get()}")
+        fun start() {
+            if (server != null) return
+            val s = TileServer(context, 0) // 0 = OS assigns free port
+            s.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+            _port.set(s.listeningPort)
+            server = s
+            Timber.d("TileServer started on port ${_port.get()}")
+        }
+
+        fun stop() {
+            server?.stop()
+            server = null
+            Timber.d("TileServer stopped")
+        }
     }
-
-    fun stop() {
-        server?.stop()
-        server = null
-        Timber.d("TileServer stopped")
-    }
-}
 
 private class TileServer(
     private val context: Context,
-    port: Int
+    port: Int,
 ) : NanoHTTPD(port) {
-
     companion object {
         private const val PMTILES_ASSET = "tiles/city.pmtiles"
     }
 
     override fun serve(session: IHTTPSession): Response {
-        val uri = session.uri ?: return newFixedLengthResponse(
-            Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found"
-        )
+        val uri =
+            session.uri ?: return newFixedLengthResponse(
+                Response.Status.NOT_FOUND, MIME_PLAINTEXT, "Not found",
+            )
 
         // Serve style.json
         if (uri == "/style.json") {

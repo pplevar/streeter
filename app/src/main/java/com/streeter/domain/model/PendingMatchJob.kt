@@ -8,5 +8,5 @@ data class PendingMatchJob(
     val queuedAt: Long,
     val status: JobStatus,
     val retryCount: Int,
-    val lastError: String?
+    val lastError: String?,
 )

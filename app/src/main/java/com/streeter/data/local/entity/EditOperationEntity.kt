@@ -7,13 +7,15 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "edit_operations",
-    foreignKeys = [ForeignKey(
-        entity = WalkEntity::class,
-        parentColumns = ["id"],
-        childColumns = ["walkId"],
-        onDelete = ForeignKey.CASCADE
-    )],
-    indices = [Index("walkId")]
+    foreignKeys = [
+        ForeignKey(
+            entity = WalkEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["walkId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("walkId")],
 )
 data class EditOperationEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -27,5 +29,5 @@ data class EditOperationEntity(
     val waypointLng: Double,
     val replacedGeometryJson: String,
     val newGeometryJson: String,
-    val createdAt: Long
+    val createdAt: Long,
 )

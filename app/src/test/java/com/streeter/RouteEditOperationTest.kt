@@ -1,34 +1,37 @@
 package com.streeter
 
-import com.streeter.domain.model.EditOperation
 import com.streeter.data.engine.StreetCoverageEngine
+import com.streeter.domain.model.EditOperation
 import com.streeter.domain.model.StreetSection
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
  * Phase 8 QA: Unit tests for EditOperation and StreetCoverageEngine logic.
  */
 class RouteEditOperationTest {
-
     // --- EditOperation serialization / field contracts ---
 
     @Test
     fun `EditOperation preserves all fields round-trip`() {
-        val op = EditOperation(
-            id = 1L,
-            walkId = 42L,
-            operationOrder = 0,
-            anchor1Lat = 51.5074,
-            anchor1Lng = -0.1278,
-            anchor2Lat = 51.5080,
-            anchor2Lng = -0.1270,
-            waypointLat = 51.5077,
-            waypointLng = -0.1274,
-            replacedGeometryJson = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[]}}""",
-            newGeometryJson = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[]}}""",
-            createdAt = 1_700_000_000_000L
-        )
+        val op =
+            EditOperation(
+                id = 1L,
+                walkId = 42L,
+                operationOrder = 0,
+                anchor1Lat = 51.5074,
+                anchor1Lng = -0.1278,
+                anchor2Lat = 51.5080,
+                anchor2Lng = -0.1270,
+                waypointLat = 51.5077,
+                waypointLng = -0.1274,
+                replacedGeometryJson = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[]}}""",
+                newGeometryJson = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[]}}""",
+                createdAt = 1_700_000_000_000L,
+            )
 
         assertEquals(42L, op.walkId)
         assertEquals(0, op.operationOrder)
@@ -43,16 +46,17 @@ class RouteEditOperationTest {
         val replaced = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[[0.0,0.0],[1.0,1.0]]}}"""
         val updated = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[[0.0,0.0],[0.5,1.5],[1.0,1.0]]}}"""
 
-        val op = EditOperation(
-            walkId = 1L,
-            operationOrder = 0,
-            anchor1Lat = 0.0, anchor1Lng = 0.0,
-            anchor2Lat = 1.0, anchor2Lng = 1.0,
-            waypointLat = 0.5, waypointLng = 1.5,
-            replacedGeometryJson = replaced,
-            newGeometryJson = updated,
-            createdAt = System.currentTimeMillis()
-        )
+        val op =
+            EditOperation(
+                walkId = 1L,
+                operationOrder = 0,
+                anchor1Lat = 0.0, anchor1Lng = 0.0,
+                anchor2Lat = 1.0, anchor2Lng = 1.0,
+                waypointLat = 0.5, waypointLng = 1.5,
+                replacedGeometryJson = replaced,
+                newGeometryJson = updated,
+                createdAt = System.currentTimeMillis(),
+            )
 
         assertNotEquals(op.replacedGeometryJson, op.newGeometryJson)
         assertTrue(op.replacedGeometryJson.contains("0.0,0.0"))
@@ -61,10 +65,11 @@ class RouteEditOperationTest {
 
     // --- StreetCoverageEngine: stable ID generation ---
 
-    private val engine = StreetCoverageEngine(
-        streetRepository = FakeStreetRepository(),
-        routingEngine = FakeRoutingEngine()
-    )
+    private val engine =
+        StreetCoverageEngine(
+            streetRepository = FakeStreetRepository(),
+            routingEngine = FakeRoutingEngine(),
+        )
 
     @Test
     fun `stable ID is consistent for same inputs`() {
@@ -126,7 +131,10 @@ class RouteEditOperationTest {
         assertEquals(0f, result, 0.001f)
     }
 
-    private fun makeSection(stableId: String, lengthM: Double) = StreetSection(
+    private fun makeSection(
+        stableId: String,
+        lengthM: Double,
+    ) = StreetSection(
         id = 0L,
         streetId = 1L,
         fromNodeOsmId = 0L,
@@ -134,43 +142,69 @@ class RouteEditOperationTest {
         lengthM = lengthM,
         geometryJson = "",
         stableId = stableId,
-        isOrphaned = false
+        isOrphaned = false,
     )
 }
 
 // Minimal fakes for constructor injection in unit tests
 private class FakeStreetRepository : com.streeter.domain.repository.StreetRepository {
     override suspend fun upsertStreet(street: com.streeter.domain.model.Street) = 0L
+
     override suspend fun getSectionsByStreetId(streetId: Long) = emptyList<com.streeter.domain.model.StreetSection>()
+
     override suspend fun upsertSection(section: com.streeter.domain.model.StreetSection) {}
+
     override suspend fun getSectionByStableId(stableId: String) = null
+
     override suspend fun insertWalkStreetCoverage(coverage: com.streeter.domain.model.WalkStreetCoverage) {}
+
     override suspend fun insertWalkSectionCoverage(coverage: com.streeter.domain.model.WalkSectionCoverage) {}
+
     override suspend fun deleteWalkCoverageForWalk(walkId: Long) {}
+
     override suspend fun getStreetCoverageForWalk(walkId: Long) = emptyList<com.streeter.domain.model.WalkStreetCoverage>()
+
     override suspend fun getStreetCountForWalk(walkId: Long): Int = 0
+
     override fun observeCoveredStreetCount(): kotlinx.coroutines.flow.Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
+
     override fun observeTotalStreetCount(): kotlinx.coroutines.flow.Flow<Int> = kotlinx.coroutines.flow.flowOf(0)
+
     override suspend fun getStreetById(streetId: Long) = null
+
     override suspend fun getCoveredLengthForStreet(streetId: Long) = 0.0
+
     override suspend fun getWalksForStreet(streetId: Long) = emptyList<com.streeter.domain.model.StreetWalkEntry>()
-    override suspend fun getCoveredSectionEdgeIdsForWalk(walkId: Long, streetId: Long) = emptyList<Long>()
+
+    override suspend fun getCoveredSectionEdgeIdsForWalk(
+        walkId: Long,
+        streetId: Long,
+    ) = emptyList<Long>()
 }
 
 private class FakeRoutingEngine : com.streeter.domain.engine.RoutingEngine {
     override suspend fun isReady() = true
+
     override suspend fun initialize() {}
+
     override suspend fun matchTrace(points: List<com.streeter.domain.model.GpsPoint>) =
         Result.failure<com.streeter.domain.model.MatchResult>(UnsupportedOperationException("fake"))
+
     override suspend fun route(
         from: com.streeter.domain.model.LatLng,
         to: com.streeter.domain.model.LatLng,
-        via: List<com.streeter.domain.model.LatLng>
+        via: List<com.streeter.domain.model.LatLng>,
     ) = Result.failure<com.streeter.domain.model.RouteResult>(UnsupportedOperationException("fake"))
+
     override fun getStreetName(edgeId: Long): String? = null
+
     override fun findNearestNamedStreet(edgeId: Long): String? = null
+
     override fun getEdgeLength(edgeId: Long): Double? = null
+
     override fun getStreetTotalLength(streetName: String): Double? = null
+
     override fun getEdgeGeometry(edgeId: Long): String? = null
+
     override fun getEdgeGeometriesForStreet(streetName: String): List<String> = emptyList()
 }

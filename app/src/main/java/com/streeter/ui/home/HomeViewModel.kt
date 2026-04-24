@@ -20,50 +20,54 @@ data class CityStats(
     val coveragePct: Int = 0,
     val coveredStreets: Int = 0,
     val totalDistanceKm: Float = 0f,
-    val walkCount: Int = 0
+    val walkCount: Int = 0,
 )
 
 @HiltViewModel
-class HomeViewModel @Inject constructor(
-    private val walkRepository: WalkRepository,
-    private val streetRepository: StreetRepository
-) : ViewModel() {
-
-    init {
-        if (!LocationService.isRunning) {
-            viewModelScope.launch {
-                val now = System.currentTimeMillis()
-                var stale = walkRepository.getActiveRecordingWalk()
-                while (stale != null) {
-                    walkRepository.updateWalk(
-                        stale.copy(status = WalkStatus.PENDING_MATCH, updatedAt = now)
-                    )
-                    stale = walkRepository.getActiveRecordingWalk()
+class HomeViewModel
+    @Inject
+    constructor(
+        private val walkRepository: WalkRepository,
+        private val streetRepository: StreetRepository,
+    ) : ViewModel() {
+        init {
+            if (!LocationService.isRunning) {
+                viewModelScope.launch {
+                    val now = System.currentTimeMillis()
+                    var stale = walkRepository.getActiveRecordingWalk()
+                    while (stale != null) {
+                        walkRepository.updateWalk(
+                            stale.copy(status = WalkStatus.PENDING_MATCH, updatedAt = now),
+                        )
+                        stale = walkRepository.getActiveRecordingWalk()
+                    }
                 }
             }
         }
+
+        // null = still loading, -1L = no active walk, >0 = active walk id
+        val activeWalkId: StateFlow<Long?> =
+            walkRepository.getAllWalks()
+                .map { walks -> walks.firstOrNull { it.status == WalkStatus.RECORDING }?.id ?: -1L }
+                .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+        val cityStats: StateFlow<CityStats> =
+            combine(
+                walkRepository.getAllWalks(),
+                streetRepository.observeCoveredStreetCount(),
+                streetRepository.observeTotalStreetCount(),
+            ) { walks, covered, total ->
+                val finishedWalks =
+                    walks.filter {
+                        it.status == WalkStatus.COMPLETED || it.status == WalkStatus.PENDING_MATCH
+                    }
+                val totalDistanceKm = finishedWalks.sumOf { it.distanceM }.toFloat() / 1000f
+                val pct = if (total > 0) (covered.toFloat() / total.toFloat() * 100).roundToInt() else 0
+                CityStats(
+                    coveragePct = pct,
+                    coveredStreets = covered,
+                    totalDistanceKm = totalDistanceKm,
+                    walkCount = finishedWalks.size,
+                )
+            }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CityStats())
     }
-
-    // null = still loading, -1L = no active walk, >0 = active walk id
-    val activeWalkId: StateFlow<Long?> = walkRepository.getAllWalks()
-        .map { walks -> walks.firstOrNull { it.status == WalkStatus.RECORDING }?.id ?: -1L }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
-
-    val cityStats: StateFlow<CityStats> = combine(
-        walkRepository.getAllWalks(),
-        streetRepository.observeCoveredStreetCount(),
-        streetRepository.observeTotalStreetCount()
-    ) { walks, covered, total ->
-        val finishedWalks = walks.filter {
-            it.status == WalkStatus.COMPLETED || it.status == WalkStatus.PENDING_MATCH
-        }
-        val totalDistanceKm = finishedWalks.sumOf { it.distanceM }.toFloat() / 1000f
-        val pct = if (total > 0) (covered.toFloat() / total.toFloat() * 100).roundToInt() else 0
-        CityStats(
-            coveragePct = pct,
-            coveredStreets = covered,
-            totalDistanceKm = totalDistanceKm,
-            walkCount = finishedWalks.size
-        )
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), CityStats())
-}

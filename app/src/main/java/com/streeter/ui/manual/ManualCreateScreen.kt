@@ -28,33 +28,41 @@ import com.streeter.ui.map.MapLibreMapView
 fun ManualCreateScreen(
     onNavigateBack: () -> Unit,
     onWalkCreated: (Long) -> Unit,
-    viewModel: ManualCreateViewModel = hiltViewModel()
+    viewModel: ManualCreateViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
-    val initialLatLng = remember {
-        val moscow = org.maplibre.android.geometry.LatLng(55.7558, 37.6173)
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED
-        if (!granted) return@remember moscow
-        try {
-            val lm = context.getSystemService(LocationManager::class.java)
-            val maxAgeMs = 6 * 60 * 60 * 1000L // 6 hours
-            val now = System.currentTimeMillis()
-            val loc = listOf(
-                "fused",
-                LocationManager.GPS_PROVIDER,
-                LocationManager.NETWORK_PROVIDER
-            ).firstNotNullOfOrNull { provider ->
-                lm?.getLastKnownLocation(provider)
-                    ?.takeIf { now - it.time < maxAgeMs }
+    val initialLatLng =
+        remember {
+            val moscow = org.maplibre.android.geometry.LatLng(55.7558, 37.6173)
+            val granted =
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                    PackageManager.PERMISSION_GRANTED ||
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    ) ==
+                    PackageManager.PERMISSION_GRANTED
+            if (!granted) return@remember moscow
+            try {
+                val lm = context.getSystemService(LocationManager::class.java)
+                val maxAgeMs = 6 * 60 * 60 * 1000L // 6 hours
+                val now = System.currentTimeMillis()
+                val loc =
+                    listOf(
+                        "fused",
+                        LocationManager.GPS_PROVIDER,
+                        LocationManager.NETWORK_PROVIDER,
+                    ).firstNotNullOfOrNull { provider ->
+                        lm?.getLastKnownLocation(provider)
+                            ?.takeIf { now - it.time < maxAgeMs }
+                    }
+                loc?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) } ?: moscow
+            } catch (_: Exception) {
+                moscow
             }
-            loc?.let { org.maplibre.android.geometry.LatLng(it.latitude, it.longitude) } ?: moscow
-        } catch (_: Exception) { moscow }
-    }
+        }
 
     LaunchedEffect(uiState.createdWalkId) {
         uiState.createdWalkId?.let { walkId -> onWalkCreated(walkId) }
@@ -74,11 +82,11 @@ fun ManualCreateScreen(
                 navigationIcon = {
                     IconButton(
                         onClick = onNavigateBack,
-                        enabled = uiState.step != ManualCreateStep.FINISHING
+                        enabled = uiState.step != ManualCreateStep.FINISHING,
                     ) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -87,14 +95,15 @@ fun ManualCreateScreen(
                 uiState = uiState,
                 onConfirmPoint = viewModel::onConfirmPoint,
                 onUndo = viewModel::onUndo,
-                onFinish = viewModel::onFinish
+                onFinish = viewModel::onFinish,
             )
-        }
+        },
     ) { paddingValues ->
         Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
         ) {
             MapLibreMapView(
                 modifier = Modifier.fillMaxSize(),
@@ -103,58 +112,67 @@ fun ManualCreateScreen(
                 initialLatLng = initialLatLng,
                 onCameraMove = { mapLatLng ->
                     viewModel.onCameraMove(
-                        com.streeter.domain.model.LatLng(mapLatLng.latitude, mapLatLng.longitude)
+                        com.streeter.domain.model.LatLng(mapLatLng.latitude, mapLatLng.longitude),
                     )
                 },
-                routeGeometryJson = uiState.accumulatedGeometryJson
+                routeGeometryJson = uiState.accumulatedGeometryJson,
             )
 
             // Centered pin overlay — visible when actively placing a point
-            val pinActive = uiState.step == ManualCreateStep.PLACING_FIRST_POINT ||
+            val pinActive =
+                uiState.step == ManualCreateStep.PLACING_FIRST_POINT ||
                     uiState.step == ManualCreateStep.PLACING_NEXT_POINT
             if (pinActive) {
                 Box(
                     modifier = Modifier.align(Alignment.Center),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.Center,
                 ) {
                     // Outer ring
                     Box(
-                        modifier = Modifier
-                            .size(28.dp)
-                            .background(Color(0xFF4CAF50).copy(alpha = 0.2f), CircleShape)
-                            .border(2.dp, Color(0xFF4CAF50), CircleShape)
+                        modifier =
+                            Modifier
+                                .size(28.dp)
+                                .background(Color(0xFF4CAF50).copy(alpha = 0.2f), CircleShape)
+                                .border(2.dp, Color(0xFF4CAF50), CircleShape),
                     )
                     // Center dot
                     Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .background(Color(0xFF4CAF50), CircleShape)
+                        modifier =
+                            Modifier
+                                .size(8.dp)
+                                .background(Color(0xFF4CAF50), CircleShape),
                     )
                 }
             }
 
             // Instruction banner
-            val instruction = when (uiState.step) {
-                ManualCreateStep.PLACING_FIRST_POINT ->
-                    "Move map to start point, then tap Add Point"
-                ManualCreateStep.PLACING_NEXT_POINT ->
-                    "Move map to next point, then tap Add Point"
-                ManualCreateStep.ROUTING ->
-                    "Computing route segment…"
-                ManualCreateStep.FINISHING ->
-                    "Saving walk…"
-                ManualCreateStep.DONE -> null
-            }
+            val instruction =
+                when (uiState.step) {
+                    ManualCreateStep.PLACING_FIRST_POINT ->
+                        "Move map to start point, then tap Add Point"
+
+                    ManualCreateStep.PLACING_NEXT_POINT ->
+                        "Move map to next point, then tap Add Point"
+
+                    ManualCreateStep.ROUTING ->
+                        "Computing route segment…"
+
+                    ManualCreateStep.FINISHING ->
+                        "Saving walk…"
+
+                    ManualCreateStep.DONE -> null
+                }
             if (instruction != null) {
                 Card(
-                    modifier = Modifier
-                        .align(Alignment.TopCenter)
-                        .padding(top = 8.dp)
+                    modifier =
+                        Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = 8.dp),
                 ) {
                     Text(
                         text = instruction,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                        style = MaterialTheme.typography.labelMedium
+                        style = MaterialTheme.typography.labelMedium,
                     )
                 }
             }
@@ -162,21 +180,25 @@ fun ManualCreateScreen(
             // Loading overlay
             if (uiState.isRouting || uiState.step == ManualCreateStep.FINISHING) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f)),
-                    contentAlignment = Alignment.Center
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.3f)),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Card {
                         Row(
                             modifier = Modifier.padding(16.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
                         ) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp))
                             Text(
-                                if (uiState.step == ManualCreateStep.FINISHING)
-                                    "Saving walk…" else "Computing route segment…"
+                                if (uiState.step == ManualCreateStep.FINISHING) {
+                                    "Saving walk…"
+                                } else {
+                                    "Computing route segment…"
+                                },
                             )
                         }
                     }
@@ -191,39 +213,45 @@ private fun ManualCreateBottomBar(
     uiState: ManualCreateUiState,
     onConfirmPoint: () -> Unit,
     onUndo: () -> Unit,
-    onFinish: () -> Unit
+    onFinish: () -> Unit,
 ) {
     BottomAppBar {
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             OutlinedButton(
                 onClick = onUndo,
-                enabled = uiState.hasPoints && !uiState.isRouting &&
+                enabled =
+                    uiState.hasPoints && !uiState.isRouting &&
                         uiState.step != ManualCreateStep.FINISHING,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
             ) {
                 Text(text = stringResource(R.string.label_undo))
             }
 
             Button(
                 onClick = onConfirmPoint,
-                enabled = uiState.currentPin != null &&
-                        (uiState.step == ManualCreateStep.PLACING_FIRST_POINT ||
-                                uiState.step == ManualCreateStep.PLACING_NEXT_POINT),
-                modifier = Modifier.weight(1.5f)
+                enabled =
+                    uiState.currentPin != null &&
+                        (
+                            uiState.step == ManualCreateStep.PLACING_FIRST_POINT ||
+                                uiState.step == ManualCreateStep.PLACING_NEXT_POINT
+                        ),
+                modifier = Modifier.weight(1.5f),
             ) {
                 Text(text = stringResource(R.string.label_add_point))
             }
 
             FilledTonalButton(
                 onClick = onFinish,
-                enabled = uiState.hasSegments && !uiState.isRouting &&
-                        uiState.step != ManualCreateStep.FINISHING
+                enabled =
+                    uiState.hasSegments && !uiState.isRouting &&
+                        uiState.step != ManualCreateStep.FINISHING,
             ) {
                 Text(text = stringResource(R.string.label_finish_walk))
             }

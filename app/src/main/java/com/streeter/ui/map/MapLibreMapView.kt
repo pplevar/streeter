@@ -12,8 +12,8 @@ import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.geometry.LatLngBounds
-import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.MapLibreMap
+import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
 import org.maplibre.android.style.layers.CircleLayer
 import org.maplibre.android.style.layers.LineLayer
@@ -21,25 +21,26 @@ import org.maplibre.android.style.layers.PropertyFactory.*
 import org.maplibre.android.style.sources.GeoJsonSource
 import timber.log.Timber
 
-val MAP_STYLE_URL = """
-{
-  "version": 8,
-  "sources": {
-    "osm": {
-      "type": "raster",
-      "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
-      "tileSize": 256,
-      "attribution": "\u00a9 OpenStreetMap contributors",
-      "maxzoom": 19
+val MAP_STYLE_URL =
+    """
+    {
+      "version": 8,
+      "sources": {
+        "osm": {
+          "type": "raster",
+          "tiles": ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+          "tileSize": 256,
+          "attribution": "\u00a9 OpenStreetMap contributors",
+          "maxzoom": 19
+        }
+      },
+      "layers": [{
+        "id": "osm-tiles",
+        "type": "raster",
+        "source": "osm"
+      }]
     }
-  },
-  "layers": [{
-    "id": "osm-tiles",
-    "type": "raster",
-    "source": "osm"
-  }]
-}
-""".trimIndent()
+    """.trimIndent()
 
 private const val GPS_ROUTE_SOURCE = "gps_route_source"
 private const val GPS_ROUTE_LAYER = "gps_route_layer"
@@ -63,7 +64,7 @@ fun MapLibreMapView(
     initialLatLng: LatLng? = null,
     onMapReady: (MapLibreMap) -> Unit = {},
     onMapClick: ((LatLng) -> Unit)? = null,
-    onCameraMove: ((LatLng) -> Unit)? = null
+    onCameraMove: ((LatLng) -> Unit)? = null,
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
@@ -78,16 +79,17 @@ fun MapLibreMapView(
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            when (event) {
-                Lifecycle.Event.ON_START -> mapView?.onStart()
-                Lifecycle.Event.ON_RESUME -> mapView?.onResume()
-                Lifecycle.Event.ON_PAUSE -> mapView?.onPause()
-                Lifecycle.Event.ON_STOP -> mapView?.onStop()
-                Lifecycle.Event.ON_DESTROY -> mapView?.onDestroy()
-                else -> {}
+        val observer =
+            LifecycleEventObserver { _, event ->
+                when (event) {
+                    Lifecycle.Event.ON_START -> mapView?.onStart()
+                    Lifecycle.Event.ON_RESUME -> mapView?.onResume()
+                    Lifecycle.Event.ON_PAUSE -> mapView?.onPause()
+                    Lifecycle.Event.ON_STOP -> mapView?.onStop()
+                    Lifecycle.Event.ON_DESTROY -> mapView?.onDestroy()
+                    else -> {}
+                }
             }
-        }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
@@ -99,10 +101,11 @@ fun MapLibreMapView(
         factory = { context ->
             MapLibre.getInstance(context)
             MapView(context).also { mapView = it }.apply {
-                layoutParams = ViewGroup.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.MATCH_PARENT
-                )
+                layoutParams =
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                    )
                 contentDescription = "Map showing walk route"
                 addOnDidFailLoadingMapListener { error ->
                     Timber.e("Map style failed to load: $error (url=$styleUrl)")
@@ -111,11 +114,12 @@ fun MapLibreMapView(
                     @Suppress("UNUSED_VALUE")
                     mapLibreMap = map
                     map.uiSettings.isRotateGesturesEnabled = false
-                    val styleBuilder = if (styleUrl.trimStart().startsWith("{")) {
-                        Style.Builder().fromJson(styleUrl)
-                    } else {
-                        Style.Builder().fromUri(styleUrl)
-                    }
+                    val styleBuilder =
+                        if (styleUrl.trimStart().startsWith("{")) {
+                            Style.Builder().fromJson(styleUrl)
+                        } else {
+                            Style.Builder().fromUri(styleUrl)
+                        }
                     map.setStyle(styleBuilder) { style ->
                         setupRouteLayers(style)
                         // Apply whatever geometry is already loaded — handles the common
@@ -130,8 +134,8 @@ fun MapLibreMapView(
                                     CameraPosition.Builder()
                                         .target(initialLatLng)
                                         .zoom(15.0)
-                                        .build()
-                                )
+                                        .build(),
+                                ),
                             )
                         }
                         // Report initial center so callers can seed their state.
@@ -167,11 +171,11 @@ fun MapLibreMapView(
                         CameraPosition.Builder()
                             .target(LatLng(last.lat, last.lng))
                             .zoom(16.0)
-                            .build()
-                    )
+                            .build(),
+                    ),
                 )
             }
-        }
+        },
     )
 }
 
@@ -183,8 +187,8 @@ private fun setupRouteLayers(style: Style) {
                 lineColor("#3B82F6"),
                 lineWidth(4f),
                 lineCap("round"),
-                lineJoin("round")
-            )
+                lineJoin("round"),
+            ),
         )
         style.addSource(GeoJsonSource(POSITION_SOURCE))
         style.addLayer(
@@ -192,8 +196,8 @@ private fun setupRouteLayers(style: Style) {
                 circleColor("#3B82F6"),
                 circleRadius(8f),
                 circleStrokeColor("#FFFFFF"),
-                circleStrokeWidth(2f)
-            )
+                circleStrokeWidth(2f),
+            ),
         )
         style.addSource(GeoJsonSource(ROUTE_JSON_SOURCE))
         style.addLayer(
@@ -201,8 +205,8 @@ private fun setupRouteLayers(style: Style) {
                 lineColor("#3B82F6"),
                 lineWidth(4f),
                 lineCap("round"),
-                lineJoin("round")
-            )
+                lineJoin("round"),
+            ),
         )
         style.addSource(GeoJsonSource(PREVIEW_SOURCE))
         style.addLayer(
@@ -210,15 +214,18 @@ private fun setupRouteLayers(style: Style) {
                 lineColor("#F59E0B"),
                 lineWidth(4f),
                 lineCap("round"),
-                lineJoin("round")
-            )
+                lineJoin("round"),
+            ),
         )
     } catch (e: Exception) {
         Timber.e(e, "Failed to set up route layers")
     }
 }
 
-private fun updateRouteLayer(map: MapLibreMap, points: List<GpsPoint>) {
+private fun updateRouteLayer(
+    map: MapLibreMap,
+    points: List<GpsPoint>,
+) {
     if (points.size < 2) return
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(GPS_ROUTE_SOURCE) ?: return
@@ -226,7 +233,10 @@ private fun updateRouteLayer(map: MapLibreMap, points: List<GpsPoint>) {
     source.setGeoJson(geojson)
 }
 
-private fun updatePositionLayer(map: MapLibreMap, points: List<GpsPoint>) {
+private fun updatePositionLayer(
+    map: MapLibreMap,
+    points: List<GpsPoint>,
+) {
     val last = points.lastOrNull { !it.isFiltered } ?: return
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(POSITION_SOURCE) ?: return
@@ -239,7 +249,10 @@ fun buildLineStringGeoJson(points: List<GpsPoint>): String {
     return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
 }
 
-private fun updateRouteJsonLayer(map: MapLibreMap, geojson: String?) {
+private fun updateRouteJsonLayer(
+    map: MapLibreMap,
+    geojson: String?,
+) {
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(ROUTE_JSON_SOURCE) ?: return
     if (geojson != null) {
@@ -247,15 +260,21 @@ private fun updateRouteJsonLayer(map: MapLibreMap, geojson: String?) {
     }
 }
 
-private fun updatePreviewLayer(map: MapLibreMap, geojson: String?) {
+private fun updatePreviewLayer(
+    map: MapLibreMap,
+    geojson: String?,
+) {
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(PREVIEW_SOURCE) ?: return
     source.setGeoJson(
-        geojson ?: """{"type":"FeatureCollection","features":[]}"""
+        geojson ?: """{"type":"FeatureCollection","features":[]}""",
     )
 }
 
-fun fitBoundsToGeometryJson(map: MapLibreMap, geojson: String) {
+fun fitBoundsToGeometryJson(
+    map: MapLibreMap,
+    geojson: String,
+) {
     try {
         val feature = org.json.JSONObject(geojson)
         val geometry = feature.optJSONObject("geometry") ?: return
@@ -267,14 +286,17 @@ fun fitBoundsToGeometryJson(map: MapLibreMap, geojson: String) {
             builder.include(LatLng(coord.getDouble(1), coord.getDouble(0)))
         }
         map.animateCamera(
-            org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(builder.build(), 64)
+            org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(builder.build(), 64),
         )
     } catch (e: Exception) {
         Timber.e(e, "Failed to fit bounds to geometry JSON")
     }
 }
 
-fun fitBoundsToJson(map: MapLibreMap, geojson: String) {
+fun fitBoundsToJson(
+    map: MapLibreMap,
+    geojson: String,
+) {
     try {
         val root = org.json.JSONObject(geojson)
         val builder = LatLngBounds.Builder()
@@ -323,11 +345,10 @@ fun fitBoundsToJson(map: MapLibreMap, geojson: String) {
 
         if (hasPoints) {
             map.animateCamera(
-                org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(builder.build(), 64)
+                org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(builder.build(), 64),
             )
         }
     } catch (e: Exception) {
         Timber.e(e, "Failed to fit bounds to JSON")
     }
 }
-

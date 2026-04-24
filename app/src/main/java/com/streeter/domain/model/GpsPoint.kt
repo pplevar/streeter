@@ -8,5 +8,5 @@ data class GpsPoint(
     val timestamp: Long,
     val accuracyM: Float,
     val speedKmh: Float,
-    val isFiltered: Boolean
+    val isFiltered: Boolean,
 )

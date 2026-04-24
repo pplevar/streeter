@@ -12,5 +12,5 @@ data class EditOperation(
     val waypointLng: Double,
     val replacedGeometryJson: String,
     val newGeometryJson: String,
-    val createdAt: Long
+    val createdAt: Long,
 )

@@ -8,5 +8,5 @@ data class StreetSection(
     val lengthM: Double,
     val geometryJson: String,
     val stableId: String,
-    val isOrphaned: Boolean
+    val isOrphaned: Boolean,
 )

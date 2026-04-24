@@ -20,13 +20,12 @@ import com.streeter.ui.streetdetail.StreetDetailScreen
 @Composable
 fun StreeterNavGraph(navController: NavHostController) {
     NavHost(navController = navController, startDestination = Screen.Home.route) {
-
         composable(Screen.Home.route) {
             HomeScreen(
                 onStartWalk = { navController.navigate(Screen.Recording.route) },
                 onViewHistory = { navController.navigate(Screen.History.route) },
                 onCreateManual = { navController.navigate(Screen.ManualCreate.route) },
-                onOpenSettings = { navController.navigate(Screen.Settings.route) }
+                onOpenSettings = { navController.navigate(Screen.Settings.route) },
             )
         }
 
@@ -37,7 +36,7 @@ fun StreeterNavGraph(navController: NavHostController) {
                     navController.navigate(Screen.WalkDetail.createRoute(walkId)) {
                         popUpTo(Screen.Home.route)
                     }
-                }
+                },
             )
         }
 
@@ -46,14 +45,14 @@ fun StreeterNavGraph(navController: NavHostController) {
                 onWalkSelected = { walkId ->
                     navController.navigate(Screen.WalkDetail.createRoute(walkId))
                 },
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 
         composable(
             route = Screen.WalkDetail.route,
             arguments = listOf(navArgument("walkId") { type = NavType.LongType }),
-            deepLinks = listOf(navDeepLink { uriPattern = "streeter://walk/{walkId}" })
+            deepLinks = listOf(navDeepLink { uriPattern = "streeter://walk/{walkId}" }),
         ) {
             WalkDetailScreen(
                 onNavigateBack = { navController.popBackStack() },
@@ -62,26 +61,26 @@ fun StreeterNavGraph(navController: NavHostController) {
                 },
                 onStreetClick = { streetId ->
                     navController.navigate(Screen.StreetDetail.createRoute(streetId))
-                }
+                },
             )
         }
 
         composable(
             route = Screen.StreetDetail.route,
-            arguments = listOf(navArgument("streetId") { type = NavType.LongType })
+            arguments = listOf(navArgument("streetId") { type = NavType.LongType }),
         ) {
             StreetDetailScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 
         composable(
             route = Screen.RouteEdit.route,
             arguments = listOf(navArgument("walkId") { type = NavType.LongType }),
-            deepLinks = listOf(navDeepLink { uriPattern = "streeter://walk/{walkId}/edit" })
+            deepLinks = listOf(navDeepLink { uriPattern = "streeter://walk/{walkId}/edit" }),
         ) {
             RouteEditScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 
@@ -92,13 +91,13 @@ fun StreeterNavGraph(navController: NavHostController) {
                     navController.navigate(Screen.WalkDetail.createRoute(walkId)) {
                         popUpTo(Screen.ManualCreate.route) { inclusive = true }
                     }
-                }
+                },
             )
         }
 
         composable(Screen.Settings.route) {
             SettingsScreen(
-                onNavigateBack = { navController.popBackStack() }
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 
@@ -108,7 +107,7 @@ fun StreeterNavGraph(navController: NavHostController) {
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Privacy.route) { inclusive = true }
                     }
-                }
+                },
             )
         }
     }

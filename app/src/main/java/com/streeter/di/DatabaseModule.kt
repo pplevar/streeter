@@ -14,19 +14,25 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
-
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): StreeterDatabase =
+    fun provideDatabase(
+        @ApplicationContext context: Context,
+    ): StreeterDatabase =
         Room.databaseBuilder(context, StreeterDatabase::class.java, "streeter_database")
             .enableMultiInstanceInvalidation()
             .addMigrations(StreeterDatabase.MIGRATION_1_2)
             .build()
 
     @Provides fun provideWalkDao(db: StreeterDatabase): WalkDao = db.walkDao()
+
     @Provides fun provideGpsPointDao(db: StreeterDatabase): GpsPointDao = db.gpsPointDao()
+
     @Provides fun provideStreetDao(db: StreeterDatabase): StreetDao = db.streetDao()
+
     @Provides fun provideRouteSegmentDao(db: StreeterDatabase): RouteSegmentDao = db.routeSegmentDao()
+
     @Provides fun provideEditOperationDao(db: StreeterDatabase): EditOperationDao = db.editOperationDao()
+
     @Provides fun providePendingMatchJobDao(db: StreeterDatabase): PendingMatchJobDao = db.pendingMatchJobDao()
 }

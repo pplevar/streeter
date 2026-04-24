@@ -5,5 +5,5 @@ data class StreetWalkEntry(
     val walkDate: Long,
     val walkTitle: String?,
     val walkedLengthM: Double,
-    val coveragePct: Float
+    val coveragePct: Float,
 )

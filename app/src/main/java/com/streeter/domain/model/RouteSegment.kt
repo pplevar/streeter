@@ -5,5 +5,5 @@ data class RouteSegment(
     val walkId: Long,
     val geometryJson: String,
     val matchedWayIds: String,
-    val segmentOrder: Int
+    val segmentOrder: Int,
 )

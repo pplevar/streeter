@@ -9,5 +9,5 @@ data class Walk(
     val status: WalkStatus,
     val source: WalkSource,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
 )

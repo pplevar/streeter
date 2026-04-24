@@ -7,17 +7,19 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "walk_sections",
-    foreignKeys = [ForeignKey(
-        entity = WalkEntity::class,
-        parentColumns = ["id"],
-        childColumns = ["walkId"],
-        onDelete = ForeignKey.CASCADE
-    )],
-    indices = [Index("walkId"), Index("sectionStableId")]
+    foreignKeys = [
+        ForeignKey(
+            entity = WalkEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["walkId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("walkId"), Index("sectionStableId")],
 )
 data class WalkSectionEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val walkId: Long,
     val sectionStableId: String,
-    val coveredPct: Float
+    val coveredPct: Float,
 )

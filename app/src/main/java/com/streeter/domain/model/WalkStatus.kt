@@ -5,5 +5,5 @@ enum class WalkStatus {
     PENDING_MATCH,
     COMPLETED,
     MANUAL_DRAFT,
-    DELETED
+    DELETED,
 }
