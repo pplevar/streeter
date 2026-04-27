@@ -2,7 +2,10 @@ package com.streeter.ui.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.Walk
+import com.streeter.domain.repository.GpsPointRepository
+import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -11,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import java.util.Calendar
 import javax.inject.Inject
 
@@ -28,6 +32,7 @@ data class HistoryUiState(
     val isLoading: Boolean = true,
     val weeklyStats: WeeklyStats = WeeklyStats(),
     val streetCountByWalkId: Map<Long, Int> = emptyMap(),
+    val routePointsByWalkId: Map<Long, List<LatLng>> = emptyMap(),
 )
 
 @HiltViewModel
@@ -36,6 +41,8 @@ class HistoryViewModel
     constructor(
         private val walkRepository: WalkRepository,
         private val streetRepository: StreetRepository,
+        private val routeSegmentRepository: RouteSegmentRepository,
+        private val gpsPointRepository: GpsPointRepository,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(HistoryUiState())
         val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
@@ -51,6 +58,7 @@ class HistoryViewModel
                     val weeklyStats = computeWeeklyStats(sorted)
                     _uiState.update { it.copy(walks = sorted, isLoading = false, weeklyStats = weeklyStats) }
                     loadStreetCounts(sorted, weeklyStats)
+                    loadRoutePoints(sorted)
                 }
             }
         }
@@ -74,6 +82,48 @@ class HistoryViewModel
                 )
             }
         }
+
+        private suspend fun loadRoutePoints(walks: List<Walk>) {
+            val routePoints = mutableMapOf<Long, List<LatLng>>()
+            walks.forEach { walk ->
+                val segments = routeSegmentRepository.getSegmentsForWalk(walk.id)
+                routePoints[walk.id] = if (segments.isNotEmpty()) {
+                    parseLatLngsFromGeoJson(segments.first().geometryJson)
+                } else {
+                    gpsPointRepository.getPointsForWalk(walk.id)
+                        .filter { !it.isFiltered }
+                        .map { LatLng(it.lat, it.lng) }
+                }
+            }
+            _uiState.update { it.copy(routePointsByWalkId = routePoints) }
+        }
+
+        private fun parseLatLngsFromGeoJson(geometryJson: String): List<LatLng> =
+            try {
+                val obj = JSONObject(geometryJson)
+                val geometry = obj.optJSONObject("geometry") ?: obj
+                val coordinates = geometry.optJSONArray("coordinates") ?: return emptyList()
+                if (geometry.optString("type") == "MultiLineString") {
+                    buildList {
+                        for (i in 0 until coordinates.length()) {
+                            val line = coordinates.getJSONArray(i)
+                            for (j in 0 until line.length()) {
+                                val coord = line.getJSONArray(j)
+                                add(LatLng(coord.getDouble(1), coord.getDouble(0)))
+                            }
+                        }
+                    }
+                } else {
+                    buildList {
+                        for (i in 0 until coordinates.length()) {
+                            val coord = coordinates.getJSONArray(i)
+                            add(LatLng(coord.getDouble(1), coord.getDouble(0)))
+                        }
+                    }
+                }
+            } catch (_: Exception) {
+                emptyList()
+            }
 
         private fun computeWeeklyStats(walks: List<Walk>): WeeklyStats {
             val startOfWeek = getStartOfWeekMs()

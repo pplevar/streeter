@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.R
+import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
@@ -115,6 +116,7 @@ fun HistoryScreen(
                                 WalkCard(
                                     walk = walk,
                                     streetCount = uiState.streetCountByWalkId[walk.id] ?: 0,
+                                    routePoints = uiState.routePointsByWalkId[walk.id] ?: emptyList(),
                                     onClick = { onWalkSelected(walk.id) },
                                 )
                             }
@@ -203,6 +205,7 @@ private fun StatPill(
 private fun WalkCard(
     walk: Walk,
     streetCount: Int,
+    routePoints: List<LatLng>,
     onClick: () -> Unit,
 ) {
     val dateFormatter = remember { SimpleDateFormat("EEE, MMM d", Locale.getDefault()) }
@@ -222,7 +225,7 @@ private fun WalkCard(
             verticalAlignment = Alignment.Top,
         ) {
             MiniMapThumbnail(
-                walkId = walk.id,
+                points = routePoints,
                 modifier =
                     Modifier
                         .size(72.dp)
@@ -341,7 +344,7 @@ private fun MetricItem(
 
 @Composable
 private fun MiniMapThumbnail(
-    walkId: Long,
+    points: List<LatLng>,
     modifier: Modifier = Modifier,
 ) {
     val bgColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -361,39 +364,39 @@ private fun MiniMapThumbnail(
             drawLine(gridColor, Offset(0f, y), Offset(w, y), gridStroke)
         }
 
-        val path = Path()
+        if (points.size < 2) return@Canvas
 
-        when (walkId % 4) {
-            0L -> {
-                path.moveTo(w * 0.20f, h * 0.75f)
-                path.lineTo(w * 0.20f, h * 0.45f)
-                path.lineTo(w * 0.55f, h * 0.45f)
-                path.lineTo(w * 0.55f, h * 0.20f)
-                path.lineTo(w * 0.80f, h * 0.20f)
-            }
-            1L -> {
-                path.moveTo(w * 0.15f, h * 0.80f)
-                path.lineTo(w * 0.45f, h * 0.80f)
-                path.lineTo(w * 0.45f, h * 0.50f)
-                path.lineTo(w * 0.75f, h * 0.50f)
-                path.lineTo(w * 0.75f, h * 0.25f)
-            }
-            2L -> {
-                path.moveTo(w * 0.20f, h * 0.70f)
-                path.lineTo(w * 0.40f, h * 0.70f)
-                path.lineTo(w * 0.40f, h * 0.35f)
-                path.lineTo(w * 0.65f, h * 0.35f)
-                path.lineTo(w * 0.65f, h * 0.15f)
-                path.lineTo(w * 0.85f, h * 0.15f)
-            }
-            else -> {
-                path.moveTo(w * 0.15f, h * 0.85f)
-                path.lineTo(w * 0.35f, h * 0.85f)
-                path.lineTo(w * 0.35f, h * 0.60f)
-                path.lineTo(w * 0.60f, h * 0.60f)
-                path.lineTo(w * 0.60f, h * 0.35f)
-                path.lineTo(w * 0.85f, h * 0.35f)
-            }
+        val minLat = points.minOf { it.lat }
+        val maxLat = points.maxOf { it.lat }
+        val minLng = points.minOf { it.lng }
+        val maxLng = points.maxOf { it.lng }
+        val latRange = maxLat - minLat
+        val lngRange = maxLng - minLng
+
+        val padding = w * 0.12f
+        val drawW = w - 2 * padding
+        val drawH = h - 2 * padding
+
+        // Preserve route aspect ratio so angles look correct
+        val scaleX = if (lngRange > 0) drawW / lngRange else Double.MAX_VALUE
+        val scaleY = if (latRange > 0) drawH / latRange else Double.MAX_VALUE
+        val scale = minOf(scaleX, scaleY)
+
+        val routeW = if (lngRange > 0) lngRange * scale else 0.0
+        val routeH = if (latRange > 0) latRange * scale else 0.0
+        val startX = (w - routeW) / 2
+        val startY = (h - routeH) / 2
+
+        fun toX(lng: Double): Float =
+            if (lngRange == 0.0) w / 2 else (startX + (lng - minLng) * scale).toFloat()
+
+        fun toY(lat: Double): Float =
+            if (latRange == 0.0) h / 2 else (startY + (maxLat - lat) * scale).toFloat()
+
+        val path = Path()
+        path.moveTo(toX(points.first().lng), toY(points.first().lat))
+        for (pt in points.drop(1)) {
+            path.lineTo(toX(pt.lng), toY(pt.lat))
         }
 
         drawPath(
