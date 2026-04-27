@@ -12,9 +12,9 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object WorkManagerModule {
-
     @Provides
     @Singleton
-    fun provideWorkManager(@ApplicationContext context: Context): WorkManager =
-        WorkManager.getInstance(context)
+    fun provideWorkManager(
+        @ApplicationContext context: Context,
+    ): WorkManager = WorkManager.getInstance(context)
 }

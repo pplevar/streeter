@@ -2,14 +2,23 @@ package com.streeter
 
 import com.streeter.domain.model.GpsPoint
 import com.streeter.service.GpsOutlierFilter
-import org.junit.Assert.*
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class GpsOutlierFilterTest {
-
-    private fun makePoint(lat: Double, lng: Double, timestampMs: Long) = GpsPoint(
-        walkId = 1L, lat = lat, lng = lng, timestamp = timestampMs,
-        accuracyM = 5f, speedKmh = 0f, isFiltered = false
+    private fun makePoint(
+        lat: Double,
+        lng: Double,
+        timestampMs: Long,
+    ) = GpsPoint(
+        walkId = 1L,
+        lat = lat,
+        lng = lng,
+        timestamp = timestampMs,
+        accuracyM = 5f,
+        speedKmh = 0f,
+        isFiltered = false,
     )
 
     @Test

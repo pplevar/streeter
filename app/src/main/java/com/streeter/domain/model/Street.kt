@@ -6,5 +6,5 @@ data class Street(
     val name: String,
     val cityTotalLengthM: Double,
     val osmDataVersion: Long,
-    val osmNameHash: String
+    val osmNameHash: String,
 )

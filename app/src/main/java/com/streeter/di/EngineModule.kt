@@ -11,7 +11,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class EngineModule {
-
     @Binds @Singleton
     abstract fun bindRoutingEngine(impl: GraphHopperEngine): RoutingEngine
 }

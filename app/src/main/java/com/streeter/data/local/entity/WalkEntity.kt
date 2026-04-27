@@ -13,5 +13,5 @@ data class WalkEntity(
     val status: String,
     val source: String,
     val createdAt: Long,
-    val updatedAt: Long
+    val updatedAt: Long,
 )

@@ -9,14 +9,14 @@ import javax.inject.Inject
 
 @HiltAndroidApp
 class StreeterApp : Application(), Configuration.Provider {
-
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
 
     override val workManagerConfiguration: Configuration
-        get() = Configuration.Builder()
-            .setWorkerFactory(workerFactory)
-            .build()
+        get() =
+            Configuration.Builder()
+                .setWorkerFactory(workerFactory)
+                .build()
 
     override fun onCreate() {
         super.onCreate()
@@ -28,7 +28,12 @@ class StreeterApp : Application(), Configuration.Provider {
     }
 
     private class ReleaseTree : Timber.Tree() {
-        override fun log(priority: Int, tag: String?, message: String, t: Throwable?) {
+        override fun log(
+            priority: Int,
+            tag: String?,
+            message: String,
+            t: Throwable?,
+        ) {
             if (priority < android.util.Log.WARN) return
             // Strip coordinates from release logs — do not log raw lat/lng
             val sanitized = message.replace(Regex("-?\\d+\\.\\d{4,}"), "[coord]")

@@ -27,7 +27,11 @@ interface RoutingEngine {
      * Calculate the shortest walkable route from [from] to [to],
      * optionally passing through [via] waypoints in order.
      */
-    suspend fun route(from: LatLng, to: LatLng, via: List<LatLng> = emptyList()): Result<RouteResult>
+    suspend fun route(
+        from: LatLng,
+        to: LatLng,
+        via: List<LatLng> = emptyList(),
+    ): Result<RouteResult>
 
     /**
      * Look up the street name for a given GraphHopper edge ID.

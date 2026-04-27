@@ -7,13 +7,15 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "gps_points",
-    foreignKeys = [ForeignKey(
-        entity = WalkEntity::class,
-        parentColumns = ["id"],
-        childColumns = ["walkId"],
-        onDelete = ForeignKey.CASCADE
-    )],
-    indices = [Index("walkId")]
+    foreignKeys = [
+        ForeignKey(
+            entity = WalkEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["walkId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("walkId")],
 )
 data class GpsPointEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -23,5 +25,5 @@ data class GpsPointEntity(
     val timestamp: Long,
     val accuracyM: Float,
     val speedKmh: Float,
-    val isFiltered: Boolean
+    val isFiltered: Boolean,
 )

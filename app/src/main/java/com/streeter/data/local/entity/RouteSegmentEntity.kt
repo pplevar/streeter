@@ -7,18 +7,20 @@ import androidx.room.PrimaryKey
 
 @Entity(
     tableName = "route_segments",
-    foreignKeys = [ForeignKey(
-        entity = WalkEntity::class,
-        parentColumns = ["id"],
-        childColumns = ["walkId"],
-        onDelete = ForeignKey.CASCADE
-    )],
-    indices = [Index("walkId")]
+    foreignKeys = [
+        ForeignKey(
+            entity = WalkEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["walkId"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index("walkId")],
 )
 data class RouteSegmentEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
     val walkId: Long,
     val geometryJson: String,
     val matchedWayIds: String,
-    val segmentOrder: Int
+    val segmentOrder: Int,
 )
