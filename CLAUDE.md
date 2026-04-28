@@ -60,6 +60,17 @@ Two bundled assets are required for full functionality (not included in the repo
 
 `StreeterNavGraph` in `ui/navigation/` defines all routes via the `Screen` sealed class. Entry point is `Screen.Home`. Deep links follow the scheme `streeter://walk/{walkId}` and `streeter://walk/{walkId}/edit`.
 
+## Tooling Preferences
+
+Use the `android` CLI (android-cli) as the preferred tool for:
+- **Emulator management** — `android emulator create/start/stop/list`
+- **APK deployment** — `android run`
+- **UI inspection** — `android layout`, `android screen capture`, `android screen resolve`
+- **SDK management** — `android sdk install/list/update/remove`
+- **Android docs** — `android docs search`
+
+Prefer `android` CLI over raw `adb` or `avdmanager` for these tasks. Continue using `./gradlew` for building and testing.
+
 ## DI Modules
 
 | Module | Provides |
