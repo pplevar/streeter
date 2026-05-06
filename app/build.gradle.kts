@@ -19,6 +19,8 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "STREETER_BASE_URL", "\"${project.findProperty("STREETER_BASE_URL") ?: "http://10.0.2.2:8080"}\"")
+        buildConfigField("String", "STREETER_API_TOKEN", "\"${project.findProperty("STREETER_API_TOKEN") ?: ""}\"")
     }
 
     buildTypes {
@@ -114,6 +116,12 @@ dependencies {
     // Lifecycle
     implementation(libs.lifecycle.service)
     implementation(libs.lifecycle.runtime.ktx)
+
+    // Ktor
+    implementation(libs.ktor.client.android)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.logging)
 
     // Core
     implementation(libs.core.ktx)

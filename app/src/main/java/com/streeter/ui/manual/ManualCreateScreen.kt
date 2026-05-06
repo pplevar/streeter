@@ -101,7 +101,6 @@ fun ManualCreateScreen(
     val surfaceColor = MaterialTheme.colorScheme.surface
 
     Box(modifier = Modifier.fillMaxSize()) {
-
         // Full-screen map
         MapLibreMapView(
             modifier = Modifier.fillMaxSize(),
@@ -433,5 +432,4 @@ fun ManualCreateScreen(
     }
 }
 
-private fun formatDistanceKm(meters: Double): String =
-    if (meters < 1000) "${meters.toInt()} m" else "%.1f km".format(meters / 1000)
+private fun formatDistanceKm(meters: Double): String = if (meters < 1000) "${meters.toInt()} m" else "%.1f km".format(meters / 1000)

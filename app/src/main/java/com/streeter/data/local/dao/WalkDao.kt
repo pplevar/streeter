@@ -29,4 +29,14 @@ interface WalkDao {
 
     @Query("SELECT * FROM walks WHERE status = 'RECORDING' LIMIT 1")
     suspend fun getActiveRecording(): WalkEntity?
+
+    @Query("SELECT * FROM walks WHERE syncStatus = 'PENDING_SYNC' AND status = 'COMPLETED'")
+    suspend fun getPendingSync(): List<WalkEntity>
+
+    @Query("UPDATE walks SET syncStatus = :syncStatus, serverWalkId = :serverWalkId WHERE id = :id")
+    suspend fun updateSyncStatus(
+        id: Long,
+        syncStatus: String,
+        serverWalkId: Long?,
+    )
 }

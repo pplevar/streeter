@@ -387,11 +387,9 @@ private fun MiniMapThumbnail(
         val startX = (w - routeW) / 2
         val startY = (h - routeH) / 2
 
-        fun toX(lng: Double): Float =
-            if (lngRange == 0.0) w / 2 else (startX + (lng - minLng) * scale).toFloat()
+        fun toX(lng: Double): Float = if (lngRange == 0.0) w / 2 else (startX + (lng - minLng) * scale).toFloat()
 
-        fun toY(lat: Double): Float =
-            if (latRange == 0.0) h / 2 else (startY + (maxLat - lat) * scale).toFloat()
+        fun toY(lat: Double): Float = if (latRange == 0.0) h / 2 else (startY + (maxLat - lat) * scale).toFloat()
 
         val path = Path()
         path.moveTo(toX(points.first().lng), toY(points.first().lat))

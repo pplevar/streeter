@@ -5,6 +5,7 @@ import com.streeter.data.local.dao.WalkDao
 import com.streeter.data.local.mapper.toCoverage
 import com.streeter.data.local.mapper.toDomain
 import com.streeter.data.local.mapper.toEntity
+import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkStreetCoverage
 import com.streeter.domain.repository.WalkRepository
@@ -34,4 +35,12 @@ class WalkRepositoryImpl
 
         override fun getWalkWithCoverage(walkId: Long): Flow<List<WalkStreetCoverage>> =
             streetDao.observeWalkCoverage(walkId).map { list -> list.map { it.toCoverage() } }
+
+        override suspend fun getWalksPendingSync(): List<Walk> = walkDao.getPendingSync().map { it.toDomain() }
+
+        override suspend fun updateSyncStatus(
+            id: Long,
+            syncStatus: SyncStatus,
+            serverWalkId: Long?,
+        ) = walkDao.updateSyncStatus(id, syncStatus.name, serverWalkId)
     }

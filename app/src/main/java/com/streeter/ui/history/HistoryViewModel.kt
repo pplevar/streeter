@@ -87,13 +87,14 @@ class HistoryViewModel
             val routePoints = mutableMapOf<Long, List<LatLng>>()
             walks.forEach { walk ->
                 val segments = routeSegmentRepository.getSegmentsForWalk(walk.id)
-                routePoints[walk.id] = if (segments.isNotEmpty()) {
-                    parseLatLngsFromGeoJson(segments.first().geometryJson)
-                } else {
-                    gpsPointRepository.getPointsForWalk(walk.id)
-                        .filter { !it.isFiltered }
-                        .map { LatLng(it.lat, it.lng) }
-                }
+                routePoints[walk.id] =
+                    if (segments.isNotEmpty()) {
+                        parseLatLngsFromGeoJson(segments.first().geometryJson)
+                    } else {
+                        gpsPointRepository.getPointsForWalk(walk.id)
+                            .filter { !it.isFiltered }
+                            .map { LatLng(it.lat, it.lng) }
+                    }
             }
             _uiState.update { it.copy(routePointsByWalkId = routePoints) }
         }

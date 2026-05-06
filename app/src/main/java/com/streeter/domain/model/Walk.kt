@@ -10,4 +10,6 @@ data class Walk(
     val source: WalkSource,
     val createdAt: Long,
     val updatedAt: Long,
+    val syncStatus: SyncStatus = SyncStatus.PENDING_SYNC,
+    val serverWalkId: Long? = null,
 )

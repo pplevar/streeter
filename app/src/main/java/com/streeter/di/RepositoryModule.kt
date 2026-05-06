@@ -28,4 +28,7 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindPendingMatchJobRepository(impl: PendingMatchJobRepositoryImpl): PendingMatchJobRepository
+
+    @Binds @Singleton
+    abstract fun bindRemoteSyncRepository(impl: RemoteSyncRepositoryImpl): RemoteSyncRepository
 }

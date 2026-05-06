@@ -3,10 +3,12 @@ package com.streeter.work
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
+import androidx.work.WorkManager
 import com.streeter.data.engine.StreetCoverageEngine
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.JobStatus
 import com.streeter.domain.model.RouteSegment
+import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
@@ -35,6 +37,7 @@ class MapMatchingWorker
         private val pendingMatchJobRepository: PendingMatchJobRepository,
         private val routingEngine: RoutingEngine,
         private val coverageEngine: StreetCoverageEngine,
+        private val workManager: WorkManager,
     ) : CoroutineWorker(context, workerParams) {
         companion object {
             const val KEY_WALK_ID = "walk_id"
@@ -198,6 +201,8 @@ class MapMatchingWorker
                     ),
                 )
             }
+            walkRepository.updateSyncStatus(walkId, SyncStatus.PENDING_SYNC, null)
+            workManager.enqueue(SyncWorker.buildRequest(walkId))
         }
 
         private fun geometryDistanceM(geometryJson: String): Double {

@@ -19,4 +19,12 @@ interface WalkRepository {
     suspend fun getActiveRecordingWalk(): Walk?
 
     fun getWalkWithCoverage(walkId: Long): Flow<List<WalkStreetCoverage>>
+
+    suspend fun getWalksPendingSync(): List<Walk>
+
+    suspend fun updateSyncStatus(
+        id: Long,
+        syncStatus: SyncStatus,
+        serverWalkId: Long?,
+    )
 }
