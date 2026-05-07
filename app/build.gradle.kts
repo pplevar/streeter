@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -6,6 +8,11 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.ktlint)
+}
+
+val localProps = Properties().also { props ->
+    rootProject.file("local.properties").takeIf { it.exists() }
+        ?.inputStream()?.use { props.load(it) }
 }
 
 android {
@@ -19,8 +26,8 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "STREETER_BASE_URL", "\"${project.findProperty("STREETER_BASE_URL") ?: "http://10.0.2.2:8080"}\"")
-        buildConfigField("String", "STREETER_API_TOKEN", "\"${project.findProperty("STREETER_API_TOKEN") ?: ""}\"")
+        buildConfigField("String", "STREETER_BASE_URL", "\"${localProps["STREETER_BASE_URL"] ?: project.findProperty("STREETER_BASE_URL") ?: "http://10.0.2.2:8080"}\"")
+        buildConfigField("String", "STREETER_API_TOKEN", "\"${localProps["STREETER_API_TOKEN"] ?: project.findProperty("STREETER_API_TOKEN") ?: ""}\"")
     }
 
     buildTypes {
@@ -116,6 +123,7 @@ dependencies {
     // Lifecycle
     implementation(libs.lifecycle.service)
     implementation(libs.lifecycle.runtime.ktx)
+    implementation(libs.lifecycle.process)
 
     // Ktor
     implementation(libs.ktor.client.android)

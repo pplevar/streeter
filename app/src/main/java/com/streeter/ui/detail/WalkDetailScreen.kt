@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.R
+import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.model.WalkStreetCoverage
@@ -218,8 +220,35 @@ fun WalkDetailScreen(
                                 Spacer(Modifier.height(8.dp))
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                                 ) {
+                                    OutlinedButton(
+                                        onClick = { viewModel.syncWalk() },
+                                        enabled = !uiState.isSyncing,
+                                    ) {
+                                        if (uiState.isSyncing) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp,
+                                            )
+                                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                                            Text("Syncing…")
+                                        } else {
+                                            Icon(
+                                                Icons.Default.Sync,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(ButtonDefaults.IconSize),
+                                            )
+                                            Spacer(Modifier.width(ButtonDefaults.IconSpacing))
+                                            Text(
+                                                when (walk.syncStatus) {
+                                                    SyncStatus.SYNCED -> "Synced"
+                                                    SyncStatus.SYNC_FAILED -> "Retry Sync"
+                                                    else -> "Sync"
+                                                },
+                                            )
+                                        }
+                                    }
                                     OutlinedButton(onClick = { viewModel.recalculateRoute() }) {
                                         Text("Recalculate Route")
                                     }

@@ -1,5 +1,6 @@
 package com.streeter.domain.repository
 
+import com.streeter.data.remote.dto.WalkSyncDto
 import com.streeter.domain.model.*
 import kotlinx.coroutines.flow.Flow
 
@@ -27,4 +28,12 @@ interface WalkRepository {
         syncStatus: SyncStatus,
         serverWalkId: Long?,
     )
+
+    suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk?
+
+    suspend fun getLastPullSyncAt(): Long?
+
+    suspend fun upsertFromRemote(dto: WalkSyncDto)
+
+    suspend fun updateLastPullSyncAt(id: Long, timestamp: Long)
 }

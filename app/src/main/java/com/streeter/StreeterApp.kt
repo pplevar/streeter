@@ -2,7 +2,12 @@ package com.streeter
 
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
+import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.WorkManager
+import com.streeter.lifecycle.AppForegroundObserver
+import com.streeter.work.PullSyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import javax.inject.Inject
@@ -11,6 +16,12 @@ import javax.inject.Inject
 class StreeterApp : Application(), Configuration.Provider {
     @Inject
     lateinit var workerFactory: HiltWorkerFactory
+
+    @Inject
+    lateinit var workManager: WorkManager
+
+    @Inject
+    lateinit var appForegroundObserver: AppForegroundObserver
 
     override val workManagerConfiguration: Configuration
         get() =
@@ -25,6 +36,12 @@ class StreeterApp : Application(), Configuration.Provider {
         } else {
             Timber.plant(ReleaseTree())
         }
+        ProcessLifecycleOwner.get().lifecycle.addObserver(appForegroundObserver)
+        workManager.enqueueUniquePeriodicWork(
+            "pull_sync_periodic",
+            ExistingPeriodicWorkPolicy.KEEP,
+            PullSyncWorker.buildPeriodicRequest(),
+        )
     }
 
     private class ReleaseTree : Timber.Tree() {

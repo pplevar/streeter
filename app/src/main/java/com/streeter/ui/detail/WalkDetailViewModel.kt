@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.work.ExistingWorkPolicy
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
@@ -12,6 +13,7 @@ import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.work.MapMatchingWorker
+import com.streeter.work.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -32,6 +34,7 @@ data class WalkDetailUiState(
     val showDeleteConfirm: Boolean = false,
     val matchingProgress: Int? = null,
     val progressStep: String? = null,
+    val isSyncing: Boolean = false,
 )
 
 @HiltViewModel
@@ -55,6 +58,7 @@ class WalkDetailViewModel
             loadWalkDetail()
             observeCoverage()
             observeWorkerProgress()
+            observeSyncWorkerState()
             loadRouteData()
             preWarmEngine()
         }
@@ -184,6 +188,32 @@ class WalkDetailViewModel
                 } catch (e: Exception) {
                     Timber.e(e, "Recalculate failed for walk=$walkId")
                     _uiState.update { it.copy(errorMessage = "Recalculation failed. Please try again.") }
+                }
+            }
+        }
+
+        private fun observeSyncWorkerState() {
+            viewModelScope.launch {
+                workManager.getWorkInfosForUniqueWorkFlow("sync_$walkId").collect { infos ->
+                    val info = infos.firstOrNull()
+                    val isSyncing = info != null &&
+                        (info.state == WorkInfo.State.RUNNING || info.state == WorkInfo.State.ENQUEUED)
+                    _uiState.update { it.copy(isSyncing = isSyncing) }
+                }
+            }
+        }
+
+        fun syncWalk() {
+            viewModelScope.launch {
+                try {
+                    workManager.enqueueUniqueWork(
+                        "sync_$walkId",
+                        ExistingWorkPolicy.REPLACE,
+                        SyncWorker.buildRequest(walkId),
+                    )
+                } catch (e: Exception) {
+                    Timber.e(e, "Sync enqueue failed for walk=$walkId")
+                    _uiState.update { it.copy(errorMessage = "Sync failed. Please try again.") }
                 }
             }
         }

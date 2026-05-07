@@ -2,9 +2,11 @@ package com.streeter.data.repository
 
 import com.streeter.data.local.dao.StreetDao
 import com.streeter.data.local.dao.WalkDao
+import com.streeter.data.local.entity.WalkEntity
 import com.streeter.data.local.mapper.toCoverage
 import com.streeter.data.local.mapper.toDomain
 import com.streeter.data.local.mapper.toEntity
+import com.streeter.data.remote.dto.WalkSyncDto
 import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkStreetCoverage
@@ -43,4 +45,44 @@ class WalkRepositoryImpl
             syncStatus: SyncStatus,
             serverWalkId: Long?,
         ) = walkDao.updateSyncStatus(id, syncStatus.name, serverWalkId)
+
+        override suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk? =
+            walkDao.getWalkByServerWalkId(serverWalkId)?.toDomain()
+
+        override suspend fun getLastPullSyncAt(): Long? = walkDao.getLastPullSyncAt()
+
+        override suspend fun upsertFromRemote(dto: WalkSyncDto) {
+            val existing = walkDao.getWalkByServerWalkId(dto.serverWalkId)
+            if (existing == null) {
+                walkDao.insert(dto.toNewEntity())
+            } else if (dto.serverUpdatedAt > existing.updatedAt) {
+                walkDao.update(
+                    existing.copy(
+                        title = dto.title,
+                        durationMs = dto.durationMs,
+                        distanceM = dto.distanceM,
+                        status = dto.status,
+                        updatedAt = dto.updatedAt,
+                        syncStatus = SyncStatus.SYNCED.name,
+                    ),
+                )
+            }
+        }
+
+        override suspend fun updateLastPullSyncAt(id: Long, timestamp: Long) =
+            walkDao.updateLastPullSyncAt(id, timestamp)
     }
+
+private fun WalkSyncDto.toNewEntity() =
+    WalkEntity(
+        title = title,
+        date = date,
+        durationMs = durationMs,
+        distanceM = distanceM,
+        status = status,
+        source = source,
+        createdAt = createdAt,
+        updatedAt = updatedAt,
+        syncStatus = SyncStatus.SYNCED.name,
+        serverWalkId = serverWalkId,
+    )

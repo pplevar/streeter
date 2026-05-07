@@ -39,4 +39,13 @@ interface WalkDao {
         syncStatus: String,
         serverWalkId: Long?,
     )
+
+    @Query("SELECT * FROM walks WHERE serverWalkId = :serverWalkId LIMIT 1")
+    suspend fun getWalkByServerWalkId(serverWalkId: Long): WalkEntity?
+
+    @Query("SELECT MAX(lastPullSyncAt) FROM walks")
+    suspend fun getLastPullSyncAt(): Long?
+
+    @Query("UPDATE walks SET lastPullSyncAt = :timestamp WHERE id = :id")
+    suspend fun updateLastPullSyncAt(id: Long, timestamp: Long)
 }

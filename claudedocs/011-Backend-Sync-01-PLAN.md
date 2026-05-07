@@ -471,25 +471,13 @@ Add method:
 ```kotlin
 suspend fun getWalks(since: Long, limit: Int, offset: Int): List<WalkSyncDto> =
     client.get("$baseUrl/api/streeter/walks") {
-        parameter("clientId", clientId)   // clientId must be injected or passed in
         parameter("since", since)
         parameter("limit", limit)
         parameter("offset", offset)
     }.body()
 ```
 
-> **Design note:** `clientId` must be resolved before calling this method. Pass it as a parameter from `RemoteSyncRepositoryImpl` rather than storing it in the service itself to keep the service stateless.
-
-Revised signature to make `clientId` explicit:
-```kotlin
-suspend fun getWalks(clientId: String, since: Long, limit: Int, offset: Int): List<WalkSyncDto> =
-    client.get("$baseUrl/api/streeter/walks") {
-        parameter("clientId", clientId)
-        parameter("since", since)
-        parameter("limit", limit)
-        parameter("offset", offset)
-    }.body()
-```
+> **Design note:** The backend GET endpoint is cross-device — it returns walks from **all** clients, not filtered by `clientId`. `clientId` is not a query parameter. Each item in the response includes a `clientId` field identifying the originating device, which the Android client uses in `upsertFromRemote` to distinguish its own walks from walks pushed by other devices.
 
 ### 7.3 WalkEntity — add lastPullSyncAt column
 
@@ -594,38 +582,35 @@ suspend fun pullWalks(since: Long): Result<Unit>
 Add:
 ```kotlin
 override suspend fun pullWalks(since: Long): Result<Unit> = runCatching {
-    val clientId = getOrCreateClientId(context)
     val pageSize = 100
     var offset = 0
     var lastSyncedAt = since
 
     while (true) {
-        val page = apiService.getWalks(clientId, since, pageSize, offset)
+        val page = apiService.getWalks(since, pageSize, offset)
         if (page.isEmpty()) break
 
         page.forEach { dto ->
             walkRepository.upsertFromRemote(dto)
-            if (dto.updatedAt > lastSyncedAt) lastSyncedAt = dto.updatedAt
+            if (dto.serverUpdatedAt > lastSyncedAt) lastSyncedAt = dto.serverUpdatedAt
         }
 
         offset += page.size
         if (page.size < pageSize) break
     }
 
-    // Persist the cursor so the next pull only fetches newer records.
-    // We write it to every walk that was touched in this pull rather than a
-    // separate preferences entry, so the cursor survives DB wipes together
-    // with the data it represents.
     if (lastSyncedAt > since) {
-        // Use a dedicated SharedPreferences key for the pull cursor — simpler
-        // than scattering lastPullSyncAt across rows.
         val prefs = context.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
         prefs.edit().putLong("last_pull_sync_at", lastSyncedAt).apply()
     }
 }
 ```
 
-> **Cursor storage:** The `lastPullSyncAt` column on `WalkEntity` (Phase 7.3) is used by `PullSyncWorker` to read the starting cursor via `WalkRepository.getLastPullSyncAt()`. Alternatively, a `SharedPreferences` key `last_pull_sync_at` is written here as a fallback. Prefer the `SharedPreferences` path — it survives independently of whether any local walk rows exist.
+> **Cursor storage:** `last_pull_sync_at` in `SharedPreferences` holds the epoch-ms cursor. It is read by `PullSyncWorker` (Phase 8.1) and advances with each successful pull. `lastPullSyncAt` on `WalkEntity` (Phase 7.3) is kept as a convenience for diagnostics but is not the primary cursor source.
+>
+> **Cross-device note:** The GET endpoint returns walks from **all** devices, not just this one. Each `WalkSyncDto` carries `clientId` identifying the originating device. `upsertFromRemote` uses `serverWalkId` to detect whether a record already exists locally — a walk from another device will never match and is always inserted as a new row. Walks from this device are identified when `dto.clientId == localClientId` (the same UUID generated at install), but no special-casing is required because the idempotency key is `serverWalkId`.
+>
+> **Cursor field caveat:** The backend filters by `synced_at` but `WalkPullResponse` exposes this value as `serverUpdatedAt` (mapped from `walk.updatedAt`). These are the same in Phase 1 since the server writes both atomically. If the server ever modifies a record independently, the cursor could drift — track this in Phase 3.
 
 ---
 
@@ -846,12 +831,13 @@ This deletion should happen at the start of `MapMatchingWorker.doWork()` before 
 
 - [ ] Room migration 3→4: verify `lastPullSyncAt` column added to walks table
 - [ ] `getWalkByServerWalkId()` returns the correct entity when `serverWalkId` matches
-- [ ] `pullWalks(since=0)` fetches all walks for the client and upserts them locally
-- [ ] `pullWalks` with a non-zero cursor fetches only walks updated after that timestamp
+- [ ] `pullWalks(since=0)` fetches all walks (all devices) and upserts them locally
+- [ ] `pullWalks` with a non-zero cursor fetches only walks with `synced_at` after that timestamp
 - [ ] Server-newer walk overwrites local editable fields (title, durationMs, distanceM, status)
 - [ ] Local-newer walk is not overwritten (local `updatedAt` > `serverUpdatedAt`)
-- [ ] New walk from another device (no local `serverWalkId` match) is inserted as a new local row
-- [ ] Pull cursor advances correctly after each successful pull call
+- [ ] Walk from another device (no local `serverWalkId` match) is inserted as a new local row
+- [ ] Pull request carries no `clientId` query parameter
+- [ ] Pull cursor (`last_pull_sync_at` in SharedPreferences) advances after each successful pull
 - [ ] Pagination: mock backend returning exactly 100 walks causes a second page request; 99 walks does not
 
 ### Phase 8 — Pull triggers

@@ -42,6 +42,31 @@ class RemoteSyncRepositoryImpl
                 walkRepository.updateSyncStatus(walkId, SyncStatus.SYNCED, serverWalkId)
             }
 
+        override suspend fun pullWalks(since: Long): Result<Unit> =
+            runCatching {
+                val pageSize = 100
+                var offset = 0
+                var lastSyncedAt = since
+
+                while (true) {
+                    val page = apiService.getWalks(since, pageSize, offset)
+                    if (page.isEmpty()) break
+
+                    page.forEach { dto ->
+                        walkRepository.upsertFromRemote(dto)
+                        if (dto.serverUpdatedAt > lastSyncedAt) lastSyncedAt = dto.serverUpdatedAt
+                    }
+
+                    offset += page.size
+                    if (page.size < pageSize) break
+                }
+
+                if (lastSyncedAt > since) {
+                    val prefs = context.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
+                    prefs.edit().putLong("last_pull_sync_at", lastSyncedAt).apply()
+                }
+            }
+
         private fun getOrCreateClientId(): String {
             val prefs = context.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
             return prefs.getString("client_id", null) ?: UUID.randomUUID().toString().also {
