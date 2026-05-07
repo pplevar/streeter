@@ -6,6 +6,7 @@
         <domain includeSubdomains="false">localhost</domain>
         <domain includeSubdomains="false">10.0.2.2</domain>
         <domain includeSubdomains="false">192.168.0.241</domain>
+        <domain includeSubdomains="false">kt.inboxa.ru</domain>
     </domain-config>
     <base-config cleartextTrafficPermitted="false" />
 </network-security-config>

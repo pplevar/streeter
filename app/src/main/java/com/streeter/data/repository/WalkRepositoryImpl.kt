@@ -54,7 +54,7 @@ class WalkRepositoryImpl
             val existing = walkDao.getWalkByServerWalkId(dto.serverWalkId)
             if (existing == null) {
                 walkDao.insert(dto.toNewEntity())
-            } else if (dto.serverUpdatedAt > existing.updatedAt) {
+            } else if (dto.updatedAt > existing.updatedAt) {
                 walkDao.update(
                     existing.copy(
                         title = dto.title,
