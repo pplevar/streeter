@@ -26,4 +26,5 @@ data class GpsPointEntity(
     val accuracyM: Float,
     val speedKmh: Float,
     val isFiltered: Boolean,
+    val isManual: Boolean = false,
 )

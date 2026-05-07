@@ -196,8 +196,9 @@ class WalkDetailViewModel
             viewModelScope.launch {
                 workManager.getWorkInfosForUniqueWorkFlow("sync_$walkId").collect { infos ->
                     val info = infos.firstOrNull()
-                    val isSyncing = info != null &&
-                        (info.state == WorkInfo.State.RUNNING || info.state == WorkInfo.State.ENQUEUED)
+                    val isSyncing =
+                        info != null &&
+                            (info.state == WorkInfo.State.RUNNING || info.state == WorkInfo.State.ENQUEUED)
                     _uiState.update { it.copy(isSyncing = isSyncing) }
                 }
             }

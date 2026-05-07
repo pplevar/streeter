@@ -13,6 +13,7 @@ fun GpsPointEntity.toDomain() =
         accuracyM = accuracyM,
         speedKmh = speedKmh,
         isFiltered = isFiltered,
+        isManual = isManual,
     )
 
 fun GpsPoint.toEntity() =
@@ -25,4 +26,5 @@ fun GpsPoint.toEntity() =
         accuracyM = accuracyM,
         speedKmh = speedKmh,
         isFiltered = isFiltered,
+        isManual = isManual,
     )

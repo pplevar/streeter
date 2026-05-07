@@ -16,7 +16,12 @@ class GpsPointRepositoryImpl
     ) : GpsPointRepository {
         override suspend fun insertPoints(points: List<GpsPoint>) = dao.insertAll(points.map { it.toEntity() })
 
-        override suspend fun getPointsForWalk(walkId: Long): List<GpsPoint> = dao.getUnfilteredPoints(walkId).map { it.toDomain() }
+        override suspend fun getPointsForWalk(walkId: Long): List<GpsPoint> = dao.getPointsForSync(walkId).map { it.toDomain() }
+
+        override suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint> =
+            dao.getPointsForMapMatching(
+                walkId,
+            ).map { it.toDomain() }
 
         override fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>> =
             dao.observePoints(walkId).map { list -> list.map { it.toDomain() } }

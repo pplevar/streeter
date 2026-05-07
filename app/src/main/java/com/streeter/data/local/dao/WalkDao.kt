@@ -47,5 +47,8 @@ interface WalkDao {
     suspend fun getLastPullSyncAt(): Long?
 
     @Query("UPDATE walks SET lastPullSyncAt = :timestamp WHERE id = :id")
-    suspend fun updateLastPullSyncAt(id: Long, timestamp: Long)
+    suspend fun updateLastPullSyncAt(
+        id: Long,
+        timestamp: Long,
+    )
 }

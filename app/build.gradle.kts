@@ -10,10 +10,11 @@ plugins {
     alias(libs.plugins.ktlint)
 }
 
-val localProps = Properties().also { props ->
-    rootProject.file("local.properties").takeIf { it.exists() }
-        ?.inputStream()?.use { props.load(it) }
-}
+val localProps =
+    Properties().also { props ->
+        rootProject.file("local.properties").takeIf { it.exists() }
+            ?.inputStream()?.use { props.load(it) }
+    }
 
 android {
     namespace = "com.streeter"
@@ -26,8 +27,16 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField("String", "STREETER_BASE_URL", "\"${localProps["STREETER_BASE_URL"] ?: project.findProperty("STREETER_BASE_URL") ?: "http://10.0.2.2:8080"}\"")
-        buildConfigField("String", "STREETER_API_TOKEN", "\"${localProps["STREETER_API_TOKEN"] ?: project.findProperty("STREETER_API_TOKEN") ?: ""}\"")
+        buildConfigField(
+            "String",
+            "STREETER_BASE_URL",
+            "\"${localProps["STREETER_BASE_URL"] ?: project.findProperty("STREETER_BASE_URL") ?: "http://10.0.2.2:8080"}\"",
+        )
+        buildConfigField(
+            "String",
+            "STREETER_API_TOKEN",
+            "\"${localProps["STREETER_API_TOKEN"] ?: project.findProperty("STREETER_API_TOKEN") ?: ""}\"",
+        )
     }
 
     buildTypes {

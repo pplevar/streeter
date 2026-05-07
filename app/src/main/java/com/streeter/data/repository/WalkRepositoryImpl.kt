@@ -46,8 +46,7 @@ class WalkRepositoryImpl
             serverWalkId: Long?,
         ) = walkDao.updateSyncStatus(id, syncStatus.name, serverWalkId)
 
-        override suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk? =
-            walkDao.getWalkByServerWalkId(serverWalkId)?.toDomain()
+        override suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk? = walkDao.getWalkByServerWalkId(serverWalkId)?.toDomain()
 
         override suspend fun getLastPullSyncAt(): Long? = walkDao.getLastPullSyncAt()
 
@@ -69,8 +68,10 @@ class WalkRepositoryImpl
             }
         }
 
-        override suspend fun updateLastPullSyncAt(id: Long, timestamp: Long) =
-            walkDao.updateLastPullSyncAt(id, timestamp)
+        override suspend fun updateLastPullSyncAt(
+            id: Long,
+            timestamp: Long,
+        ) = walkDao.updateLastPullSyncAt(id, timestamp)
     }
 
 private fun WalkSyncDto.toNewEntity() =

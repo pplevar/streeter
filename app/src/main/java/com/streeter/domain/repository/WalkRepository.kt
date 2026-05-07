@@ -35,5 +35,8 @@ interface WalkRepository {
 
     suspend fun upsertFromRemote(dto: WalkSyncDto)
 
-    suspend fun updateLastPullSyncAt(id: Long, timestamp: Long)
+    suspend fun updateLastPullSyncAt(
+        id: Long,
+        timestamp: Long,
+    )
 }

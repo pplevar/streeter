@@ -19,7 +19,7 @@ import com.streeter.data.local.entity.*
         EditOperationEntity::class,
         PendingMatchJobEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class StreeterDatabase : RoomDatabase() {
@@ -55,6 +55,13 @@ abstract class StreeterDatabase : RoomDatabase() {
             object : Migration(3, 4) {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL("ALTER TABLE walks ADD COLUMN lastPullSyncAt INTEGER")
+                }
+            }
+
+        val MIGRATION_4_5 =
+            object : Migration(4, 5) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE gps_points ADD COLUMN isManual INTEGER NOT NULL DEFAULT 0")
                 }
             }
     }

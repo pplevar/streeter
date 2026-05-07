@@ -9,8 +9,11 @@ interface GpsPointDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(points: List<GpsPointEntity>)
 
+    @Query("SELECT * FROM gps_points WHERE walkId = :walkId AND isFiltered = 0 AND isManual = 0 ORDER BY timestamp ASC")
+    suspend fun getPointsForMapMatching(walkId: Long): List<GpsPointEntity>
+
     @Query("SELECT * FROM gps_points WHERE walkId = :walkId AND isFiltered = 0 ORDER BY timestamp ASC")
-    suspend fun getUnfilteredPoints(walkId: Long): List<GpsPointEntity>
+    suspend fun getPointsForSync(walkId: Long): List<GpsPointEntity>
 
     @Query("SELECT * FROM gps_points WHERE walkId = :walkId ORDER BY timestamp ASC")
     fun observePoints(walkId: Long): Flow<List<GpsPointEntity>>

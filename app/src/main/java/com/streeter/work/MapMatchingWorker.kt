@@ -89,7 +89,7 @@ class MapMatchingWorker
                     val wayIds: List<Long> =
                         if (walk.source == WalkSource.RECORDED) {
                             // GPS trace → map match → get way IDs
-                            val points = gpsPointRepository.getPointsForWalk(walkId).filter { !it.isFiltered }
+                            val points = gpsPointRepository.getPointsForMapMatching(walkId)
                             Timber.d("MapMatchingWorker: ${points.size} GPS points for walk=$walkId")
                             setProgress(workDataOf(KEY_PROGRESS to 15, KEY_STEP to "Loaded ${points.size} GPS points…"))
 

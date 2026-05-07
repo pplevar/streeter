@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.work.WorkManager
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
+import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.work.MapMatchingWorker
@@ -56,6 +57,7 @@ class ManualCreateViewModel
     constructor(
         private val walkRepository: WalkRepository,
         private val routeSegmentRepository: RouteSegmentRepository,
+        private val gpsPointRepository: GpsPointRepository,
         private val routingEngine: RoutingEngine,
         private val workManager: WorkManager,
     ) : ViewModel() {
@@ -215,6 +217,21 @@ class ManualCreateViewModel
                         )
 
                     val walkId = walkRepository.insertWalk(walk)
+
+                    gpsPointRepository.insertPoints(
+                        state.placedPoints.mapIndexed { index, point ->
+                            GpsPoint(
+                                walkId = walkId,
+                                lat = point.lat,
+                                lng = point.lng,
+                                timestamp = now + index,
+                                accuracyM = 0f,
+                                speedKmh = 0f,
+                                isFiltered = false,
+                                isManual = true,
+                            )
+                        },
+                    )
 
                     routeSegmentRepository.insertSegment(
                         RouteSegment(

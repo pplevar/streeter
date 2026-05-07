@@ -8,5 +8,7 @@ interface GpsPointRepository {
 
     suspend fun getPointsForWalk(walkId: Long): List<GpsPoint>
 
+    suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint>
+
     fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>>
 }

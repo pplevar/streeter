@@ -97,4 +97,5 @@ private fun GpsPoint.toDto() =
         accuracyM = accuracyM,
         speedKmh = speedKmh,
         isFiltered = isFiltered,
+        isManual = isManual,
     )
