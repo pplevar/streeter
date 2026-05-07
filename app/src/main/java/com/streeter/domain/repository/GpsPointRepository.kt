@@ -12,5 +12,8 @@ interface GpsPointRepository {
 
     fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>>
 
-    suspend fun replacePointsFromRemote(walkId: Long, points: List<GpsPoint>)
+    suspend fun replacePointsFromRemote(
+        walkId: Long,
+        points: List<GpsPoint>,
+    )
 }

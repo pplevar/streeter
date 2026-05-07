@@ -42,10 +42,11 @@ class RemoteSyncRepositoryImpl
 
                 val points = gpsPointRepository.getPointsForWalk(walkId)
                 val clientKnownUpdatedAt = walkRepository.getGpsTraceSyncedAt(walkId)
-                val traceResponse = apiService.syncGpsTrace(
-                    serverWalkId,
-                    GpsTraceSyncRequest(points.map { it.toDto() }, clientKnownUpdatedAt),
-                )
+                val traceResponse =
+                    apiService.syncGpsTrace(
+                        serverWalkId,
+                        GpsTraceSyncRequest(points.map { it.toDto() }, clientKnownUpdatedAt),
+                    )
                 if (traceResponse.accepted) {
                     walkRepository.updateGpsTraceSyncedAt(walkId, traceResponse.updatedAt)
                 }
@@ -68,8 +69,9 @@ class RemoteSyncRepositoryImpl
                         walkRepository.upsertFromRemote(dto)
                         if (dto.serverUpdatedAt > lastSyncedAt) lastSyncedAt = dto.serverUpdatedAt
 
-                        val localWalk = walkRepository.getWalkByServerWalkId(dto.serverWalkId)
-                            ?: return@forEach
+                        val localWalk =
+                            walkRepository.getWalkByServerWalkId(dto.serverWalkId)
+                                ?: return@forEach
                         val serverTraceUpdatedAt = dto.gpsTraceUpdatedAt ?: return@forEach
                         val localTraceUpdatedAt = walkRepository.getGpsTraceSyncedAt(localWalk.id)
 

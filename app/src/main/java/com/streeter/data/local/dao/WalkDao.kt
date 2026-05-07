@@ -18,17 +18,28 @@ interface WalkDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(walk: WalkEntity): Long
 
-    @Query("""
+    @Query(
+        """
         UPDATE walks
         SET title = :title, date = :date, durationMs = :durationMs, distanceM = :distanceM,
             status = :status, source = :source, createdAt = :createdAt, updatedAt = :updatedAt,
             syncStatus = :syncStatus, serverWalkId = :serverWalkId, lastPullSyncAt = :lastPullSyncAt
         WHERE id = :id
-    """)
+    """,
+    )
     suspend fun update(
-        id: Long, title: String?, date: Long, durationMs: Long, distanceM: Double,
-        status: String, source: String, createdAt: Long, updatedAt: Long,
-        syncStatus: String, serverWalkId: Long?, lastPullSyncAt: Long?,
+        id: Long,
+        title: String?,
+        date: Long,
+        durationMs: Long,
+        distanceM: Double,
+        status: String,
+        source: String,
+        createdAt: Long,
+        updatedAt: Long,
+        syncStatus: String,
+        serverWalkId: Long?,
+        lastPullSyncAt: Long?,
     )
 
     @Query("UPDATE walks SET status = 'DELETED' WHERE id = :id")
