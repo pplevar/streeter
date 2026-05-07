@@ -1,6 +1,8 @@
 package com.streeter.data.remote.api
 
 import com.streeter.data.remote.dto.GpsTraceSyncRequest
+import com.streeter.data.remote.dto.GpsTraceSyncResponse
+import com.streeter.data.remote.dto.GpsTraceResponse
 import com.streeter.data.remote.dto.WalkSyncDto
 import com.streeter.data.remote.dto.WalkSyncRequest
 import com.streeter.data.remote.dto.WalkSyncResponse
@@ -23,12 +25,14 @@ class StreeterApiService(private val client: HttpClient, private val baseUrl: St
     suspend fun syncGpsTrace(
         serverWalkId: Long,
         request: GpsTraceSyncRequest,
-    ) {
+    ): GpsTraceSyncResponse =
         client.post("$baseUrl/api/streeter/walks/$serverWalkId/gps-trace") {
             contentType(ContentType.Application.Json)
             setBody(request)
-        }
-    }
+        }.body()
+
+    suspend fun getGpsTrace(serverWalkId: Long): GpsTraceResponse =
+        client.get("$baseUrl/api/streeter/walks/$serverWalkId/gps-trace").body()
 
     suspend fun getWalks(
         since: Long,

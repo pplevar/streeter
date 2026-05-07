@@ -16,4 +16,5 @@ data class WalkSyncDto(
     val createdAt: Long,
     val updatedAt: Long,
     val serverUpdatedAt: Long,
+    val gpsTraceUpdatedAt: Long? = null,
 )

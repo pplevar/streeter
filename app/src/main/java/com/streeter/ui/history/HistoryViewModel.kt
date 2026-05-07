@@ -159,7 +159,7 @@ class HistoryViewModel
             order: WalkSortOrder,
         ): List<Walk> =
             when (order) {
-                WalkSortOrder.NEWEST -> walks.sortedByDescending { it.date }
+                WalkSortOrder.NEWEST -> walks.sortedByDescending { it.createdAt }
                 WalkSortOrder.LONGEST -> walks.sortedByDescending { it.distanceM }
                 WalkSortOrder.MOST_STREETS -> walks.sortedByDescending { it.date }
             }

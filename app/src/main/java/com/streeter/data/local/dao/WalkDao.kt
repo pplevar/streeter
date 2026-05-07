@@ -18,8 +18,18 @@ interface WalkDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(walk: WalkEntity): Long
 
-    @Update
-    suspend fun update(walk: WalkEntity)
+    @Query("""
+        UPDATE walks
+        SET title = :title, date = :date, durationMs = :durationMs, distanceM = :distanceM,
+            status = :status, source = :source, createdAt = :createdAt, updatedAt = :updatedAt,
+            syncStatus = :syncStatus, serverWalkId = :serverWalkId, lastPullSyncAt = :lastPullSyncAt
+        WHERE id = :id
+    """)
+    suspend fun update(
+        id: Long, title: String?, date: Long, durationMs: Long, distanceM: Double,
+        status: String, source: String, createdAt: Long, updatedAt: Long,
+        syncStatus: String, serverWalkId: Long?, lastPullSyncAt: Long?,
+    )
 
     @Query("UPDATE walks SET status = 'DELETED' WHERE id = :id")
     suspend fun softDelete(id: Long)
@@ -48,6 +58,15 @@ interface WalkDao {
 
     @Query("UPDATE walks SET lastPullSyncAt = :timestamp WHERE id = :id")
     suspend fun updateLastPullSyncAt(
+        id: Long,
+        timestamp: Long,
+    )
+
+    @Query("SELECT gpsTraceSyncedAt FROM walks WHERE id = :id")
+    suspend fun getGpsTraceSyncedAt(id: Long): Long?
+
+    @Query("UPDATE walks SET gpsTraceSyncedAt = :timestamp WHERE id = :id")
+    suspend fun updateGpsTraceSyncedAt(
         id: Long,
         timestamp: Long,
     )

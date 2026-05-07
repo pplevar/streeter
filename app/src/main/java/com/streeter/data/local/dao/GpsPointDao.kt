@@ -17,4 +17,7 @@ interface GpsPointDao {
 
     @Query("SELECT * FROM gps_points WHERE walkId = :walkId ORDER BY timestamp ASC")
     fun observePoints(walkId: Long): Flow<List<GpsPointEntity>>
+
+    @Query("DELETE FROM gps_points WHERE walkId = :walkId")
+    suspend fun deleteByWalkId(walkId: Long)
 }

@@ -17,4 +17,5 @@ data class WalkEntity(
     val syncStatus: String = "PENDING_SYNC",
     val serverWalkId: Long? = null,
     val lastPullSyncAt: Long? = null,
+    val gpsTraceSyncedAt: Long? = null,
 )

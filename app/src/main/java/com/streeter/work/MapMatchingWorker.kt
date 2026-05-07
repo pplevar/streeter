@@ -115,7 +115,7 @@ class MapMatchingWorker
                             setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Route matched…"))
 
                             val matched = matchResult.getOrThrow()
-                            // Persist segment so it can be referenced later (e.g. route editing)
+                            routeSegmentRepository.deleteSegmentsForWalk(walkId)
                             routeSegmentRepository.insertSegment(
                                 RouteSegment(
                                     walkId = walkId,

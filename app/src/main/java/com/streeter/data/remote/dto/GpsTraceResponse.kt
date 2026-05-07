@@ -3,7 +3,9 @@ package com.streeter.data.remote.dto
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class GpsTraceSyncRequest(
+data class GpsTraceResponse(
+    val walkId: Long,
+    val pointCount: Int,
     val points: List<GpsPointDto>,
-    val clientKnownUpdatedAt: Long? = null,
+    val updatedAt: Long,
 )

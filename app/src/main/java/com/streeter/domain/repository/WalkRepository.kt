@@ -39,4 +39,11 @@ interface WalkRepository {
         id: Long,
         timestamp: Long,
     )
+
+    suspend fun getGpsTraceSyncedAt(id: Long): Long?
+
+    suspend fun updateGpsTraceSyncedAt(
+        id: Long,
+        timestamp: Long,
+    )
 }

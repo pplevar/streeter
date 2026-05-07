@@ -29,7 +29,15 @@ class WalkRepositoryImpl
 
         override suspend fun insertWalk(walk: Walk): Long = walkDao.insert(walk.toEntity())
 
-        override suspend fun updateWalk(walk: Walk) = walkDao.update(walk.toEntity())
+        override suspend fun updateWalk(walk: Walk) {
+            val e = walk.toEntity()
+            walkDao.update(
+                id = e.id, title = e.title, date = e.date, durationMs = e.durationMs,
+                distanceM = e.distanceM, status = e.status, source = e.source,
+                createdAt = e.createdAt, updatedAt = e.updatedAt, syncStatus = e.syncStatus,
+                serverWalkId = e.serverWalkId, lastPullSyncAt = e.lastPullSyncAt,
+            )
+        }
 
         override suspend fun deleteWalk(id: Long) = walkDao.softDelete(id)
 
@@ -56,14 +64,18 @@ class WalkRepositoryImpl
                 walkDao.insert(dto.toNewEntity())
             } else if (dto.updatedAt > existing.updatedAt) {
                 walkDao.update(
-                    existing.copy(
-                        title = dto.title,
-                        durationMs = dto.durationMs,
-                        distanceM = dto.distanceM,
-                        status = dto.status,
-                        updatedAt = dto.updatedAt,
-                        syncStatus = SyncStatus.SYNCED.name,
-                    ),
+                    id = existing.id,
+                    title = dto.title,
+                    date = existing.date,
+                    durationMs = dto.durationMs,
+                    distanceM = dto.distanceM,
+                    status = dto.status,
+                    source = existing.source,
+                    createdAt = existing.createdAt,
+                    updatedAt = dto.updatedAt,
+                    syncStatus = SyncStatus.SYNCED.name,
+                    serverWalkId = existing.serverWalkId,
+                    lastPullSyncAt = existing.lastPullSyncAt,
                 )
             }
         }
@@ -72,6 +84,13 @@ class WalkRepositoryImpl
             id: Long,
             timestamp: Long,
         ) = walkDao.updateLastPullSyncAt(id, timestamp)
+
+        override suspend fun getGpsTraceSyncedAt(id: Long): Long? = walkDao.getGpsTraceSyncedAt(id)
+
+        override suspend fun updateGpsTraceSyncedAt(
+            id: Long,
+            timestamp: Long,
+        ) = walkDao.updateGpsTraceSyncedAt(id, timestamp)
     }
 
 private fun WalkSyncDto.toNewEntity() =

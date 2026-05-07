@@ -1,6 +1,8 @@
 package com.streeter.data.repository
 
 import android.content.Context
+import androidx.work.ExistingWorkPolicy
+import androidx.work.WorkManager
 import com.streeter.data.remote.api.StreeterApiService
 import com.streeter.data.remote.dto.GpsPointDto
 import com.streeter.data.remote.dto.GpsTraceSyncRequest
@@ -8,9 +10,11 @@ import com.streeter.data.remote.dto.WalkSyncRequest
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.Walk
+import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RemoteSyncRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.work.MapMatchingWorker
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
@@ -37,7 +41,14 @@ class RemoteSyncRepositoryImpl
                 val serverWalkId = response.serverWalkId
 
                 val points = gpsPointRepository.getPointsForWalk(walkId)
-                apiService.syncGpsTrace(serverWalkId, GpsTraceSyncRequest(points.map { it.toDto() }))
+                val clientKnownUpdatedAt = walkRepository.getGpsTraceSyncedAt(walkId)
+                val traceResponse = apiService.syncGpsTrace(
+                    serverWalkId,
+                    GpsTraceSyncRequest(points.map { it.toDto() }, clientKnownUpdatedAt),
+                )
+                if (traceResponse.accepted) {
+                    walkRepository.updateGpsTraceSyncedAt(walkId, traceResponse.updatedAt)
+                }
 
                 walkRepository.updateSyncStatus(walkId, SyncStatus.SYNCED, serverWalkId)
             }
@@ -47,6 +58,7 @@ class RemoteSyncRepositoryImpl
                 val pageSize = 100
                 var offset = 0
                 var lastSyncedAt = since
+                val workManager = WorkManager.getInstance(context)
 
                 while (true) {
                     val page = apiService.getWalks(since, pageSize, offset)
@@ -55,6 +67,26 @@ class RemoteSyncRepositoryImpl
                     page.forEach { dto ->
                         walkRepository.upsertFromRemote(dto)
                         if (dto.serverUpdatedAt > lastSyncedAt) lastSyncedAt = dto.serverUpdatedAt
+
+                        val localWalk = walkRepository.getWalkByServerWalkId(dto.serverWalkId)
+                            ?: return@forEach
+                        val serverTraceUpdatedAt = dto.gpsTraceUpdatedAt ?: return@forEach
+                        val localTraceUpdatedAt = walkRepository.getGpsTraceSyncedAt(localWalk.id)
+
+                        if (localTraceUpdatedAt == null || serverTraceUpdatedAt > localTraceUpdatedAt) {
+                            val trace = apiService.getGpsTrace(dto.serverWalkId)
+                            gpsPointRepository.replacePointsFromRemote(
+                                localWalk.id,
+                                trace.points.map { it.toDomain(localWalk.id) },
+                            )
+                            walkRepository.updateGpsTraceSyncedAt(localWalk.id, trace.updatedAt)
+                            walkRepository.updateWalk(localWalk.copy(status = WalkStatus.PENDING_MATCH))
+                            workManager.enqueueUniqueWork(
+                                "match_${localWalk.id}",
+                                ExistingWorkPolicy.REPLACE,
+                                MapMatchingWorker.buildRequest(localWalk.id),
+                            )
+                        }
                     }
 
                     offset += page.size
@@ -91,6 +123,18 @@ private fun Walk.toSyncRequest(clientId: String) =
 
 private fun GpsPoint.toDto() =
     GpsPointDto(
+        lat = lat,
+        lng = lng,
+        timestamp = timestamp,
+        accuracyM = accuracyM,
+        speedKmh = speedKmh,
+        isFiltered = isFiltered,
+        isManual = isManual,
+    )
+
+private fun GpsPointDto.toDomain(walkId: Long) =
+    GpsPoint(
+        walkId = walkId,
         lat = lat,
         lng = lng,
         timestamp = timestamp,
