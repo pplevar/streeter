@@ -6,20 +6,6 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Background gradient: forest green top-left → deep green bottom-right -->
-    <path android:pathData="M0,0 h108 v108 h-108 Z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:startX="0"
-                android:startY="0"
-                android:endX="108"
-                android:endY="108"
-                android:startColor="#1F6E58"
-                android:endColor="#0B2F26"
-                android:type="linear"/>
-        </aapt:attr>
-    </path>
-
     <!-- Subtle street grid at 10% opacity -->
     <path
         android:pathData="M0,27 H108 M0,54 H108 M0,81 H108 M27,0 V108 M54,0 V108 M81,0 V108"
