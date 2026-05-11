@@ -36,12 +36,20 @@ class RecordingViewModel
         private val _gpsPoints = MutableStateFlow<List<GpsPoint>>(emptyList())
         val gpsPoints: StateFlow<List<GpsPoint>> = _gpsPoints.asStateFlow()
 
-        private val walkStartMs = MutableStateFlow(0L)
+        // Accumulated duration of all completed segments (ms)
+        private val accumulatedMs = MutableStateFlow(0L)
+
+        // When the current recording segment started; 0 when paused
+        private val segmentStartMs = MutableStateFlow(0L)
+
         private val _elapsedMs = MutableStateFlow(0L)
         val elapsedMs: StateFlow<Long> = _elapsedMs.asStateFlow()
 
         private val _isWalkStarted = MutableStateFlow(false)
         val isWalkStarted: StateFlow<Boolean> = _isWalkStarted.asStateFlow()
+
+        private val _isPaused = MutableStateFlow(false)
+        val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
 
         val distanceM: StateFlow<Double> =
             _gpsPoints
@@ -65,6 +73,11 @@ class RecordingViewModel
                             _gpsPoints.value = points
                         }
                     }
+                    viewModelScope.launch {
+                        service.isPaused.collect { paused ->
+                            _isPaused.value = paused
+                        }
+                    }
                 }
 
                 override fun onServiceDisconnected(name: ComponentName?) {
@@ -77,37 +90,93 @@ class RecordingViewModel
             viewModelScope.launch {
                 val activeWalk = walkRepository.getActiveRecordingWalk()
                 if (activeWalk != null) {
-                    walkStartMs.value = activeWalk.date
                     _isWalkStarted.value = true
-                    val serviceIntent =
-                        Intent(context, LocationService::class.java).apply {
-                            action = LocationService.ACTION_RESUME_WALK
-                            putExtra(LocationService.EXTRA_WALK_ID, activeWalk.id)
-                        }
-                    context.startForegroundService(serviceIntent)
-                    bindToService()
+                    accumulatedMs.value = activeWalk.durationMs
+                    if (activeWalk.isPaused) {
+                        segmentStartMs.value = 0L
+                        _isPaused.value = true
+                        _elapsedMs.value = activeWalk.durationMs
+                        // Service is not running; user must tap Resume to restart it
+                    } else {
+                        segmentStartMs.value = activeWalk.lastResumedAt ?: activeWalk.date
+                        val serviceIntent =
+                            Intent(context, LocationService::class.java).apply {
+                                action = LocationService.ACTION_RESUME_WALK
+                                putExtra(LocationService.EXTRA_WALK_ID, activeWalk.id)
+                            }
+                        context.startForegroundService(serviceIntent)
+                        bindToService()
+                    }
                 }
             }
 
             viewModelScope.launch {
                 while (true) {
                     delay(1000L)
-                    val start = walkStartMs.value
-                    if (start > 0) _elapsedMs.value = System.currentTimeMillis() - start
+                    val segStart = segmentStartMs.value
+                    if (segStart > 0L) {
+                        _elapsedMs.value = accumulatedMs.value + (System.currentTimeMillis() - segStart)
+                    }
                 }
             }
         }
 
         fun startWalk() {
             if (_isWalkStarted.value) return
-            walkStartMs.value = System.currentTimeMillis()
+            val now = System.currentTimeMillis()
+            accumulatedMs.value = 0L
+            segmentStartMs.value = now
             _isWalkStarted.value = true
+            _isPaused.value = false
             val serviceIntent =
                 Intent(context, LocationService::class.java).apply {
                     action = LocationService.ACTION_START_WALK
                 }
             context.startForegroundService(serviceIntent)
             bindToService()
+        }
+
+        fun pauseWalk() {
+            if (!_isWalkStarted.value || _isPaused.value) return
+            val now = System.currentTimeMillis()
+            val segStart = segmentStartMs.value
+            if (segStart > 0L) accumulatedMs.value += now - segStart
+            _elapsedMs.value = accumulatedMs.value
+            segmentStartMs.value = 0L
+            _isPaused.value = true
+            context.startService(
+                Intent(context, LocationService::class.java).apply {
+                    action = LocationService.ACTION_PAUSE_WALK
+                },
+            )
+        }
+
+        fun resumeWalk() {
+            if (!_isWalkStarted.value || !_isPaused.value) return
+            val now = System.currentTimeMillis()
+            segmentStartMs.value = now
+            _isPaused.value = false
+
+            val serviceWalkId = locationService?.getCurrentWalkId() ?: -1L
+            if (serviceWalkId != -1L) {
+                sendResumeIntent(serviceWalkId)
+            } else {
+                // Service was not running (process killed while paused); look up walk ID from DB
+                viewModelScope.launch {
+                    val walk = walkRepository.getActiveRecordingWalk()
+                    walk?.let { sendResumeIntent(it.id) }
+                }
+            }
+        }
+
+        private fun sendResumeIntent(walkId: Long) {
+            val intent =
+                Intent(context, LocationService::class.java).apply {
+                    action = LocationService.ACTION_RESUME_WALK
+                    putExtra(LocationService.EXTRA_WALK_ID, walkId)
+                }
+            context.startForegroundService(intent)
+            if (!isBound) bindToService()
         }
 
         fun stopWalk(): Long {
@@ -117,6 +186,10 @@ class RecordingViewModel
                     action = LocationService.ACTION_STOP_WALK
                 }
             context.startService(stopIntent)
+            _isWalkStarted.value = false
+            _isPaused.value = false
+            accumulatedMs.value = 0L
+            segmentStartMs.value = 0L
             unbind()
             return walkId
         }

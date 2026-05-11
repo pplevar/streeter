@@ -36,6 +36,7 @@ class WalkRepositoryImpl
                 distanceM = e.distanceM, status = e.status, source = e.source,
                 createdAt = e.createdAt, updatedAt = e.updatedAt, syncStatus = e.syncStatus,
                 serverWalkId = e.serverWalkId, lastPullSyncAt = e.lastPullSyncAt,
+                lastResumedAt = e.lastResumedAt, isPaused = e.isPaused,
             )
         }
 
@@ -76,6 +77,8 @@ class WalkRepositoryImpl
                     syncStatus = SyncStatus.SYNCED.name,
                     serverWalkId = existing.serverWalkId,
                     lastPullSyncAt = existing.lastPullSyncAt,
+                    lastResumedAt = null,
+                    isPaused = false,
                 )
             }
         }

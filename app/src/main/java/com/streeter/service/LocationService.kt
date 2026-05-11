@@ -40,6 +40,7 @@ class LocationService : LifecycleService() {
         const val ACTION_START_WALK = "com.streeter.ACTION_START_WALK"
         const val ACTION_STOP_WALK = "com.streeter.ACTION_STOP_WALK"
         const val ACTION_RESUME_WALK = "com.streeter.ACTION_RESUME_WALK"
+        const val ACTION_PAUSE_WALK = "com.streeter.ACTION_PAUSE_WALK"
         const val EXTRA_WALK_ID = "com.streeter.EXTRA_WALK_ID"
         private const val NOTIFICATION_ID = 1001
 
@@ -54,7 +55,6 @@ class LocationService : LifecycleService() {
 
     @Inject lateinit var pendingMatchJobRepository: PendingMatchJobRepository
 
-    // Lazily obtained to avoid triggering WorkManager initialization during Hilt setup
     private val workManager by lazy { WorkManager.getInstance(applicationContext) }
 
     private val binder = LocalBinder()
@@ -76,6 +76,9 @@ class LocationService : LifecycleService() {
 
     private val _isRecording = MutableStateFlow(false)
     val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+
+    private val _isPaused = MutableStateFlow(false)
+    val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
 
     inner class LocalBinder : Binder() {
         fun getService(): LocationService = this@LocationService
@@ -100,6 +103,7 @@ class LocationService : LifecycleService() {
         when (intent?.action) {
             ACTION_START_WALK -> startWalk()
             ACTION_STOP_WALK -> stopWalk()
+            ACTION_PAUSE_WALK -> pauseWalk()
             ACTION_RESUME_WALK -> {
                 val walkId = intent.getLongExtra(EXTRA_WALK_ID, -1L)
                 if (walkId != -1L) resumeWalk(walkId)
@@ -111,7 +115,7 @@ class LocationService : LifecycleService() {
     private fun startWalk() {
         if (_isRecording.value) return
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForeground(NOTIFICATION_ID, buildNotification(paused = false))
 
         lifecycleScope.launch {
             val now = System.currentTimeMillis()
@@ -126,64 +130,114 @@ class LocationService : LifecycleService() {
                         source = WalkSource.RECORDED,
                         createdAt = now,
                         updatedAt = now,
+                        lastResumedAt = now,
+                        isPaused = false,
                     ),
                 )
             currentWalkId = walkId
             _isRecording.value = true
+            _isPaused.value = false
             startLocationUpdates()
             Timber.d("Walk started, id=$walkId")
         }
     }
 
+    private fun pauseWalk() {
+        if (!_isRecording.value || _isPaused.value) return
+        stopLocationUpdates()
+        _isPaused.value = true
+        updateNotification(paused = true)
+
+        lifecycleScope.launch {
+            flushPoints()
+            if (currentWalkId != -1L) {
+                val walk = walkRepository.getWalkById(currentWalkId)
+                walk?.let {
+                    val now = System.currentTimeMillis()
+                    val segmentMs = if (it.lastResumedAt != null) now - it.lastResumedAt else 0L
+                    walkRepository.updateWalk(
+                        it.copy(
+                            durationMs = it.durationMs + segmentMs,
+                            lastResumedAt = null,
+                            isPaused = true,
+                            updatedAt = now,
+                        ),
+                    )
+                }
+            }
+            Timber.d("Walk paused, id=$currentWalkId")
+        }
+    }
+
     private fun resumeWalk(walkId: Long) {
-        if (_isRecording.value) return
+        if (_isRecording.value && !_isPaused.value) return
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
         currentWalkId = walkId
         _isRecording.value = true
+        _isPaused.value = false
+        startForeground(NOTIFICATION_ID, buildNotification(paused = false))
+
+        lifecycleScope.launch {
+            val now = System.currentTimeMillis()
+            val walk = walkRepository.getWalkById(walkId)
+            walk?.let {
+                walkRepository.updateWalk(
+                    it.copy(
+                        lastResumedAt = now,
+                        isPaused = false,
+                        updatedAt = now,
+                    ),
+                )
+            }
+        }
         startLocationUpdates()
         Timber.d("Walk resumed, id=$walkId")
     }
 
     private fun stopWalk() {
-        Timber.w("LocationService.stopWalk called: isRecording=%b, currentWalkId=%d", _isRecording.value, currentWalkId)
-        if (!_isRecording.value) return
-        stopLocationUpdates()
+        if (currentWalkId == -1L) return
+        if (!_isPaused.value) stopLocationUpdates()
+
         lifecycleScope.launch {
             flushPoints()
-            if (currentWalkId != -1L) {
-                val walkId = currentWalkId
-                val walk = walkRepository.getWalkById(walkId)
-                walk?.let {
-                    val now = System.currentTimeMillis()
-                    walkRepository.updateWalk(
-                        it.copy(
-                            status = WalkStatus.PENDING_MATCH,
-                            durationMs = now - it.date,
-                            updatedAt = now,
-                        ),
-                    )
-                }
-                pendingMatchJobRepository.enqueue(
-                    PendingMatchJob(
-                        walkId = walkId,
-                        queuedAt = System.currentTimeMillis(),
-                        status = JobStatus.QUEUED,
-                        retryCount = 0,
-                        lastError = null,
+            val walkId = currentWalkId
+            val walk = walkRepository.getWalkById(walkId)
+            walk?.let {
+                val now = System.currentTimeMillis()
+                val finalDuration =
+                    if (it.lastResumedAt != null) {
+                        it.durationMs + (now - it.lastResumedAt)
+                    } else {
+                        it.durationMs
+                    }
+                walkRepository.updateWalk(
+                    it.copy(
+                        status = WalkStatus.PENDING_MATCH,
+                        durationMs = finalDuration,
+                        lastResumedAt = null,
+                        isPaused = false,
+                        updatedAt = now,
                     ),
                 )
-                workManager.enqueueUniqueWork(
-                    "match_$walkId",
-                    ExistingWorkPolicy.KEEP,
-                    MapMatchingWorker.buildRequest(walkId),
-                )
-                Timber.w("Walk stopped: id=%d → PENDING_MATCH, worker enqueued", walkId)
-            } else {
-                Timber.w("Walk stopped but currentWalkId=-1, worker NOT enqueued")
             }
+            pendingMatchJobRepository.enqueue(
+                PendingMatchJob(
+                    walkId = walkId,
+                    queuedAt = System.currentTimeMillis(),
+                    status = JobStatus.QUEUED,
+                    retryCount = 0,
+                    lastError = null,
+                ),
+            )
+            workManager.enqueueUniqueWork(
+                "match_$walkId",
+                ExistingWorkPolicy.KEEP,
+                MapMatchingWorker.buildRequest(walkId),
+            )
+            Timber.w("Walk stopped: id=%d → PENDING_MATCH, worker enqueued", walkId)
             currentWalkId = -1L
             _isRecording.value = false
+            _isPaused.value = false
             lastKeptPoint = null
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -281,7 +335,12 @@ class LocationService : LifecycleService() {
         nm.createNotificationChannel(channel)
     }
 
-    private fun buildNotification(): Notification {
+    private fun updateNotification(paused: Boolean) {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        nm.notify(NOTIFICATION_ID, buildNotification(paused))
+    }
+
+    private fun buildNotification(paused: Boolean): Notification {
         val pendingIntent =
             PendingIntent.getActivity(
                 this,
@@ -289,9 +348,11 @@ class LocationService : LifecycleService() {
                 Intent(this, MainActivity::class.java),
                 PendingIntent.FLAG_IMMUTABLE,
             )
+        val title = if (paused) getString(R.string.notification_paused_title) else getString(R.string.notification_recording_title)
+        val text = if (paused) getString(R.string.notification_paused_text) else getString(R.string.notification_recording_text)
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle(getString(R.string.notification_recording_title))
-            .setContentText(getString(R.string.notification_recording_text))
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.ic_menu_mylocation)
             .setContentIntent(pendingIntent)
             .setOngoing(true)

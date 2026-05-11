@@ -19,6 +19,8 @@ fun WalkEntity.toDomain() =
         updatedAt = updatedAt,
         syncStatus = SyncStatus.valueOf(syncStatus),
         serverWalkId = serverWalkId,
+        lastResumedAt = lastResumedAt,
+        isPaused = isPaused,
     )
 
 fun Walk.toEntity() =
@@ -34,4 +36,6 @@ fun Walk.toEntity() =
         updatedAt = updatedAt,
         syncStatus = syncStatus.name,
         serverWalkId = serverWalkId,
+        lastResumedAt = lastResumedAt,
+        isPaused = isPaused,
     )

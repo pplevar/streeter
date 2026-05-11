@@ -36,6 +36,7 @@ class HomeViewModel
                     val now = System.currentTimeMillis()
                     var stale = walkRepository.getActiveRecordingWalk()
                     while (stale != null) {
+                        if (stale.isPaused) break // paused walk is intact; RecordingViewModel will restore it
                         walkRepository.updateWalk(
                             stale.copy(status = WalkStatus.PENDING_MATCH, updatedAt = now),
                         )

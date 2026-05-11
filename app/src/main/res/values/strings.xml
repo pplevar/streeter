@@ -8,7 +8,10 @@
     <string name="permission_background_rationale">Background location lets Streeter record your route while your screen is off.</string>
     <string name="label_start_walk">Start Walk</string>
     <string name="label_resume_walk">Resume Walk</string>
+    <string name="label_pause_walk">Pause Walk</string>
     <string name="label_stop_walk">Stop Walk</string>
+    <string name="notification_paused_title">Walk paused</string>
+    <string name="notification_paused_text">GPS paused. Tap to return to Streeter.</string>
     <string name="label_history">History</string>
     <string name="label_create_manual">Create Manual Walk</string>
     <string name="label_edit_route">Edit Route</string>

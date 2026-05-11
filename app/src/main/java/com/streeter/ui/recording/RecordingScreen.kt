@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -35,6 +38,7 @@ fun RecordingScreen(
     val elapsedMs by viewModel.elapsedMs.collectAsState()
     val distanceM by viewModel.distanceM.collectAsState()
     val isWalkStarted by viewModel.isWalkStarted.collectAsState()
+    val isPaused by viewModel.isPaused.collectAsState()
     val context = LocalContext.current
     val initialLatLng =
         remember {
@@ -61,7 +65,7 @@ fun RecordingScreen(
             modifier = Modifier.fillMaxSize(),
             styleUrl = MAP_STYLE_URL,
             gpsPoints = gpsPoints,
-            followLocation = isWalkStarted,
+            followLocation = isWalkStarted && !isPaused,
             showCurrentPosition = isWalkStarted,
             initialLatLng = initialLatLng,
         )
@@ -106,10 +110,10 @@ fun RecordingScreen(
                         Modifier
                             .size(8.dp)
                             .clip(RoundedCornerShape(4.dp))
-                            .background(MaterialTheme.colorScheme.error),
+                            .background(if (isPaused) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error),
                 )
                 Text(
-                    text = "REC",
+                    text = if (isPaused) "PAUSED" else "REC",
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.2.sp,
@@ -180,27 +184,51 @@ fun RecordingScreen(
                     )
                 }
 
-                Button(
-                    onClick = {
-                        val walkId = viewModel.stopWalk()
-                        onStopAndNavigate(walkId)
-                    },
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(56.dp),
-                    shape = RoundedCornerShape(28.dp),
-                    colors =
-                        ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error,
-                            contentColor = MaterialTheme.colorScheme.onError,
-                        ),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    Text(
-                        text = stringResource(R.string.label_stop_walk),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.SemiBold,
-                    )
+                    Button(
+                        onClick = { if (isPaused) viewModel.resumeWalk() else viewModel.pauseWalk() },
+                        modifier = Modifier.weight(1f).height(56.dp),
+                        shape = RoundedCornerShape(28.dp),
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            ),
+                    ) {
+                        Icon(
+                            imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                            contentDescription = null,
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(if (isPaused) R.string.label_resume_walk else R.string.label_pause_walk),
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            val walkId = viewModel.stopWalk()
+                            onStopAndNavigate(walkId)
+                        },
+                        modifier = Modifier.size(56.dp),
+                        shape = RoundedCornerShape(28.dp),
+                        colors =
+                            ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError,
+                            ),
+                        contentPadding = PaddingValues(0.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Stop,
+                            contentDescription = stringResource(R.string.label_stop_walk),
+                        )
+                    }
                 }
             }
         } else {

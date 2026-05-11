@@ -19,7 +19,7 @@ import com.streeter.data.local.entity.*
         EditOperationEntity::class,
         PendingMatchJobEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 abstract class StreeterDatabase : RoomDatabase() {
@@ -69,6 +69,14 @@ abstract class StreeterDatabase : RoomDatabase() {
             object : Migration(5, 6) {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL("ALTER TABLE walks ADD COLUMN gpsTraceSyncedAt INTEGER")
+                }
+            }
+
+        val MIGRATION_6_7 =
+            object : Migration(6, 7) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE walks ADD COLUMN lastResumedAt INTEGER")
+                    db.execSQL("ALTER TABLE walks ADD COLUMN isPaused INTEGER NOT NULL DEFAULT 0")
                 }
             }
     }

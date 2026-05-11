@@ -23,7 +23,8 @@ interface WalkDao {
         UPDATE walks
         SET title = :title, date = :date, durationMs = :durationMs, distanceM = :distanceM,
             status = :status, source = :source, createdAt = :createdAt, updatedAt = :updatedAt,
-            syncStatus = :syncStatus, serverWalkId = :serverWalkId, lastPullSyncAt = :lastPullSyncAt
+            syncStatus = :syncStatus, serverWalkId = :serverWalkId, lastPullSyncAt = :lastPullSyncAt,
+            lastResumedAt = :lastResumedAt, isPaused = :isPaused
         WHERE id = :id
     """,
     )
@@ -40,6 +41,8 @@ interface WalkDao {
         syncStatus: String,
         serverWalkId: Long?,
         lastPullSyncAt: Long?,
+        lastResumedAt: Long?,
+        isPaused: Boolean,
     )
 
     @Query("UPDATE walks SET status = 'DELETED' WHERE id = :id")
