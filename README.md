@@ -1,6 +1,6 @@
 # Streeter
 
-An Android app that tracks walks and computes street coverage — what percentage of a city's streets you have walked. Runs entirely offline.
+An Android app that tracks walks and computes street coverage — what percentage of a city's streets you have walked.
 
 Built with Kotlin and Jetpack Compose. Targets Android SDK 35 (minimum SDK 35), Java 17.
 
@@ -8,7 +8,7 @@ Built with Kotlin and Jetpack Compose. Targets Android SDK 35 (minimum SDK 35), 
 
 ## How It Works
 
-Streeter records GPS tracks during walks, matches them to the street network using GraphHopper, and computes cumulative street coverage. Coverage data is stored in a local Room database and displayed per-walk and in aggregate. No network connection is required at runtime.
+Streeter records GPS tracks during walks, matches them to the street network using GraphHopper, and computes cumulative street coverage. Coverage data is stored in a local Room database and displayed per-walk and in aggregate. Map tiles and routing data are bundled as local assets — no network connection is required for recording or map matching. An optional background sync service can push completed walks to a remote API when a connection is available.
 
 ---
 
@@ -64,13 +64,16 @@ The assembled APK is output to `app/build/outputs/apk/`.
 Three-layer clean architecture:
 
 ```
-domain/   Pure Kotlin interfaces and models. No Android dependencies.
-data/     Room database, repository implementations, GraphHopperEngine, StreetCoverageEngine.
-ui/       Jetpack Compose screens and Hilt ViewModels, one subdirectory per screen.
-di/       Hilt modules.
-service/  LocationService — foreground service, FusedLocationProvider, GPS outlier filter, batched writes.
-work/     MapMatchingWorker — WorkManager job, exponential backoff, max 3 retries.
-map/      TileServerManager — NanoHTTPD server serving PMTiles over loopback for MapLibre.
+domain/    Pure Kotlin interfaces and models. No Android dependencies.
+data/      Room database, repository implementations, GraphHopperEngine, StreetCoverageEngine.
+           data/remote/ holds the Ktor API client and DTOs for optional walk sync.
+ui/        Jetpack Compose screens and Hilt ViewModels, one subdirectory per screen.
+           ui/map/ holds the shared MapLibre composable used across screens.
+di/        Hilt modules.
+service/   LocationService — foreground service, FusedLocationProvider, GPS outlier filter, batched writes.
+work/      WorkManager jobs: MapMatchingWorker (offline map matching), SyncWorker and PullSyncWorker (remote sync, network-gated).
+map/       TileServerManager — NanoHTTPD server serving PMTiles over loopback for MapLibre.
+lifecycle/ AppForegroundObserver — triggers PullSyncWorker on app foreground.
 ```
 
 ### Walk Status Lifecycle
@@ -78,6 +81,7 @@ map/      TileServerManager — NanoHTTPD server serving PMTiles over loopback f
 ```
 RECORDING → PENDING_MATCH → COMPLETED
 MANUAL_DRAFT  (manually created walks, bypasses recording)
+DELETED       (soft-deleted walks)
 ```
 
 **Recording:** `LocationService` runs as a foreground service and collects GPS points via `FusedLocationProviderClient`. Points are filtered for outliers and flushed to Room in batches of 50. On stop, the walk moves to `PENDING_MATCH` and `MapMatchingWorker` is enqueued.
@@ -88,19 +92,20 @@ MANUAL_DRAFT  (manually created walks, bypasses recording)
 
 ### Key Libraries
 
-| Library                      | Role                         |
-|------------------------------|------------------------------|
-| Jetpack Compose + Material3  | UI                           |
-| Hilt                         | Dependency injection         |
-| Room                         | Local database               |
-| MapLibre                     | Offline map rendering        |
-| GraphHopper                  | Routing and map matching     |
-| WorkManager                  | Background map matching jobs |
-| NanoHTTPD                    | Local PMTiles tile server    |
-| FusedLocationProviderClient  | GPS                          |
-| Kotlinx Serialization        | Serialization                |
-| Timber                       | Logging                      |
-| KSP                          | Annotation processing        |
+| Library                      | Role                                     |
+|------------------------------|------------------------------------------|
+| Jetpack Compose + Material3  | UI                                       |
+| Hilt                         | Dependency injection                     |
+| Room                         | Local database                           |
+| MapLibre                     | Offline map rendering                    |
+| GraphHopper                  | Routing and map matching                 |
+| WorkManager                  | Background jobs (map matching and sync)  |
+| NanoHTTPD                    | Local PMTiles tile server                |
+| FusedLocationProviderClient  | GPS                                      |
+| Ktor                         | HTTP client for optional remote sync     |
+| Kotlinx Serialization        | Serialization                            |
+| Timber                       | Logging                                  |
+| KSP                          | Annotation processing                    |
 
 ---
 
@@ -113,6 +118,7 @@ MANUAL_DRAFT  (manually created walks, bypasses recording)
 | Recording         | Home               | Live GPS track on map during active recording        |
 | History           | Home               | All past walks with summary stats                    |
 | WalkDetail        | History            | Per-walk coverage stats and map visualization        |
+| StreetDetail      | WalkDetail         | Coverage history and map for a single street segment |
 | RouteEdit         | WalkDetail         | Drag-to-edit route segments for a completed walk     |
 | ManualCreate      | Home               | Draw a route manually without GPS recording          |
 | Settings          | Home               | GPS interval, speed filter, and related options      |

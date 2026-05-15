@@ -6,6 +6,7 @@ import kotlinx.serialization.Serializable
 data class WalkSyncRequest(
     val clientId: String,
     val localWalkId: Long,
+    val serverWalkId: Long? = null,
     val title: String?,
     val date: Long,
     val durationMs: Long,

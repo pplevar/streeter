@@ -69,6 +69,8 @@ class RemoteSyncRepositoryImpl
                         walkRepository.upsertFromRemote(dto)
                         if (dto.serverUpdatedAt > lastSyncedAt) lastSyncedAt = dto.serverUpdatedAt
 
+                        if (dto.status == WalkStatus.DELETED.name) return@forEach
+
                         val localWalk =
                             walkRepository.getWalkByServerWalkId(dto.serverWalkId)
                                 ?: return@forEach
@@ -113,6 +115,7 @@ private fun Walk.toSyncRequest(clientId: String) =
     WalkSyncRequest(
         clientId = clientId,
         localWalkId = id,
+        serverWalkId = serverWalkId,
         title = title,
         date = date,
         durationMs = durationMs,

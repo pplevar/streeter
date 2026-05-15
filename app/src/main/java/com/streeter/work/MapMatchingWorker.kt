@@ -205,17 +205,20 @@ class MapMatchingWorker
             walkId: Long,
             distanceM: Double? = null,
         ) {
-            walkRepository.getWalkById(walkId)?.let { walk ->
-                walkRepository.updateWalk(
-                    walk.copy(
-                        status = WalkStatus.COMPLETED,
-                        distanceM = distanceM ?: walk.distanceM,
-                        updatedAt = System.currentTimeMillis(),
-                    ),
-                )
+            val walk = walkRepository.getWalkById(walkId) ?: return
+            walkRepository.updateWalk(
+                walk.copy(
+                    status = WalkStatus.COMPLETED,
+                    distanceM = distanceM ?: walk.distanceM,
+                    updatedAt = System.currentTimeMillis(),
+                ),
+            )
+            if (walk.serverWalkId == null) {
+                walkRepository.updateSyncStatus(walkId, SyncStatus.PENDING_SYNC, null)
+                workManager.enqueue(SyncWorker.buildRequest(walkId))
+            } else {
+                walkRepository.updateSyncStatus(walkId, SyncStatus.SYNCED, walk.serverWalkId)
             }
-            walkRepository.updateSyncStatus(walkId, SyncStatus.PENDING_SYNC, null)
-            workManager.enqueue(SyncWorker.buildRequest(walkId))
         }
 
         private fun geometryDistanceM(geometryJson: String): Double {

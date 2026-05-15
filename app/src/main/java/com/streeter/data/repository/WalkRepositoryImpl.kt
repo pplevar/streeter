@@ -62,7 +62,7 @@ class WalkRepositoryImpl
         override suspend fun upsertFromRemote(dto: WalkSyncDto) {
             val existing = walkDao.getWalkByServerWalkId(dto.serverWalkId)
             if (existing == null) {
-                walkDao.insert(dto.toNewEntity())
+                if (dto.status != "DELETED") walkDao.insert(dto.toNewEntity())
             } else if (dto.updatedAt > existing.updatedAt) {
                 walkDao.update(
                     id = existing.id,

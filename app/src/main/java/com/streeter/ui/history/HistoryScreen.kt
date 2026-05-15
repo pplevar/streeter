@@ -12,6 +12,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.DirectionsWalk
 import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -97,15 +98,38 @@ fun HistoryScreen(
         ) {
             StatPillsRow(uiState.weeklyStats)
 
+            if (uiState.pendingSyncCount > 0 || uiState.failedSyncCount > 0) {
+                SyncBanner(
+                    pendingCount = uiState.pendingSyncCount,
+                    failedCount = uiState.failedSyncCount,
+                    onSyncClick = viewModel::triggerSync,
+                    modifier = Modifier.padding(horizontal = 16.dp).padding(bottom = 8.dp),
+                )
+            }
+
             Box(modifier = Modifier.fillMaxSize()) {
                 when {
                     uiState.isLoading -> CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
                     uiState.walks.isEmpty() ->
-                        Text(
-                            text = stringResource(R.string.label_no_walks),
+                        Column(
                             modifier = Modifier.align(Alignment.Center),
-                            style = MaterialTheme.typography.bodyLarge,
-                        )
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.label_no_walks),
+                                style = MaterialTheme.typography.bodyLarge,
+                            )
+                            OutlinedButton(onClick = viewModel::triggerPullSync) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Sync,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text("Sync from server")
+                            }
+                        }
                     else ->
                         LazyColumn(
                             modifier = Modifier.fillMaxSize(),
@@ -122,6 +146,57 @@ fun HistoryScreen(
                             }
                         }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncBanner(
+    pendingCount: Int,
+    failedCount: Int,
+    onSyncClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val hasFailed = failedCount > 0
+    val bg = if (hasFailed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerLow
+    val contentColor = if (hasFailed) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
+    val buttonColor = if (hasFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+
+    val message = when {
+        hasFailed && pendingCount == 0 -> "$failedCount ${if (failedCount == 1) "walk" else "walks"} failed to sync"
+        hasFailed -> "$failedCount failed · $pendingCount pending"
+        else -> "$pendingCount ${if (pendingCount == 1) "walk" else "walks"} not synced"
+    }
+    val buttonLabel = if (hasFailed) "Retry" else "Sync"
+
+    Surface(modifier = modifier.fillMaxWidth(), color = bg, shape = RoundedCornerShape(16.dp)) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.Sync,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+                tint = contentColor,
+            )
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodySmall,
+                color = contentColor,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(
+                onClick = onSyncClick,
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+            ) {
+                Text(
+                    text = buttonLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = buttonColor,
+                )
             }
         }
     }

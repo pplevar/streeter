@@ -2,12 +2,17 @@ package com.streeter.ui.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.ExistingWorkPolicy
+import androidx.work.WorkManager
 import com.streeter.domain.model.LatLng
+import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.Walk
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.work.PullSyncWorker
+import com.streeter.work.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,6 +38,8 @@ data class HistoryUiState(
     val weeklyStats: WeeklyStats = WeeklyStats(),
     val streetCountByWalkId: Map<Long, Int> = emptyMap(),
     val routePointsByWalkId: Map<Long, List<LatLng>> = emptyMap(),
+    val pendingSyncCount: Int = 0,
+    val failedSyncCount: Int = 0,
 )
 
 @HiltViewModel
@@ -43,6 +50,7 @@ class HistoryViewModel
         private val streetRepository: StreetRepository,
         private val routeSegmentRepository: RouteSegmentRepository,
         private val gpsPointRepository: GpsPointRepository,
+        private val workManager: WorkManager,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(HistoryUiState())
         val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
@@ -56,7 +64,17 @@ class HistoryViewModel
                 walkRepository.getAllWalks().collect { walks ->
                     val sorted = sortWalks(walks, _uiState.value.sortOrder)
                     val weeklyStats = computeWeeklyStats(sorted)
-                    _uiState.update { it.copy(walks = sorted, isLoading = false, weeklyStats = weeklyStats) }
+                    val pendingSyncCount = sorted.count { it.syncStatus == SyncStatus.PENDING_SYNC }
+                    val failedSyncCount = sorted.count { it.syncStatus == SyncStatus.SYNC_FAILED }
+                    _uiState.update {
+                        it.copy(
+                            walks = sorted,
+                            isLoading = false,
+                            weeklyStats = weeklyStats,
+                            pendingSyncCount = pendingSyncCount,
+                            failedSyncCount = failedSyncCount,
+                        )
+                    }
                     loadStreetCounts(sorted, weeklyStats)
                     loadRoutePoints(sorted)
                 }
@@ -163,4 +181,26 @@ class HistoryViewModel
                 WalkSortOrder.LONGEST -> walks.sortedByDescending { it.distanceM }
                 WalkSortOrder.MOST_STREETS -> walks.sortedByDescending { it.date }
             }
+
+        fun triggerPullSync() {
+            workManager.enqueueUniqueWork(
+                PullSyncWorker.UNIQUE_WORK_NAME,
+                androidx.work.ExistingWorkPolicy.REPLACE,
+                PullSyncWorker.buildOneTimeRequest(),
+            )
+        }
+
+        fun triggerSync() {
+            val toSync =
+                _uiState.value.walks.filter {
+                    it.syncStatus == SyncStatus.PENDING_SYNC || it.syncStatus == SyncStatus.SYNC_FAILED
+                }
+            toSync.forEach { walk ->
+                workManager.enqueueUniqueWork(
+                    "sync_walk_${walk.id}",
+                    ExistingWorkPolicy.REPLACE,
+                    SyncWorker.buildRequest(walk.id),
+                )
+            }
+        }
     }

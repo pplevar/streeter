@@ -7,7 +7,7 @@ data class WalkSyncDto(
     val serverWalkId: Long,
     val localWalkId: Long,
     val clientId: String,
-    val title: String?,
+    val title: String? = null,
     val date: Long,
     val durationMs: Long,
     val distanceM: Double,
