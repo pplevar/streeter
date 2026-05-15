@@ -12,11 +12,17 @@ interface StreetDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertStreet(street: StreetEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertStreets(streets: List<StreetEntity>): List<Long>
+
     @Query("SELECT * FROM streets WHERE osmWayId = :osmWayId")
     suspend fun getStreetByOsmWayId(osmWayId: Long): StreetEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertSection(section: StreetSectionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertSections(sections: List<StreetSectionEntity>)
 
     @Query("SELECT * FROM street_sections WHERE streetId = :streetId")
     suspend fun getSectionsByStreetId(streetId: Long): List<StreetSectionEntity>
@@ -24,11 +30,20 @@ interface StreetDao {
     @Query("SELECT * FROM street_sections WHERE stableId = :stableId")
     suspend fun getSectionByStableId(stableId: String): StreetSectionEntity?
 
+    @Query("SELECT * FROM street_sections WHERE stableId IN (:stableIds)")
+    suspend fun getSectionsByStableIds(stableIds: List<String>): List<StreetSectionEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWalkStreet(coverage: WalkStreetEntity)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWalkStreets(coverages: List<WalkStreetEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertWalkSection(coverage: WalkSectionEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertWalkSections(coverages: List<WalkSectionEntity>)
 
     @Query("DELETE FROM walk_streets WHERE walkId = :walkId")
     suspend fun deleteWalkStreets(walkId: Long)

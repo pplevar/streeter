@@ -69,6 +69,7 @@ class RouteEditOperationTest {
         StreetCoverageEngine(
             streetRepository = FakeStreetRepository(),
             routingEngine = FakeRoutingEngine(),
+            transactionRunner = com.streeter.data.engine.TransactionRunner { block -> block() },
         )
 
     @Test
@@ -150,15 +151,25 @@ class RouteEditOperationTest {
 private class FakeStreetRepository : com.streeter.domain.repository.StreetRepository {
     override suspend fun upsertStreet(street: com.streeter.domain.model.Street) = 0L
 
+    override suspend fun upsertStreets(streets: List<com.streeter.domain.model.Street>) = streets.map { 0L }
+
     override suspend fun getSectionsByStreetId(streetId: Long) = emptyList<com.streeter.domain.model.StreetSection>()
 
     override suspend fun upsertSection(section: com.streeter.domain.model.StreetSection) {}
 
+    override suspend fun upsertSections(sections: List<com.streeter.domain.model.StreetSection>) {}
+
     override suspend fun getSectionByStableId(stableId: String) = null
+
+    override suspend fun getSectionsByStableIds(stableIds: List<String>) = emptyList<com.streeter.domain.model.StreetSection>()
 
     override suspend fun insertWalkStreetCoverage(coverage: com.streeter.domain.model.WalkStreetCoverage) {}
 
+    override suspend fun insertWalkStreetCoverages(coverages: List<com.streeter.domain.model.WalkStreetCoverage>) {}
+
     override suspend fun insertWalkSectionCoverage(coverage: com.streeter.domain.model.WalkSectionCoverage) {}
+
+    override suspend fun insertWalkSectionCoverages(coverages: List<com.streeter.domain.model.WalkSectionCoverage>) {}
 
     override suspend fun deleteWalkCoverageForWalk(walkId: Long) {}
 

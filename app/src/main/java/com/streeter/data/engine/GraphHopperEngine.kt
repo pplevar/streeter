@@ -42,6 +42,8 @@ class GraphHopperEngine
 
         @Volatile private var streetEdgeIndex: Map<String, List<Int>>? = null
 
+        private val nearestNameCache = java.util.concurrent.ConcurrentHashMap<Long, String>()
+
         companion object {
             private const val OSM_ASSET_PATH = "osm/city.osm.pbf"
 
@@ -103,6 +105,9 @@ class GraphHopperEngine
 
                         hopper = gh
                         graphBounds = gh.baseGraph.bounds
+                        nearestNameCache.clear()
+                        streetLengthIndex = null
+                        streetEdgeIndex = null
                         mapMatching =
                             MapMatching.fromGraphHopper(
                                 gh,
@@ -349,6 +354,7 @@ class GraphHopperEngine
         }
 
         override fun findNearestNamedStreet(edgeId: Long): String? {
+            nearestNameCache[edgeId]?.let { return it }
             val gh = hopper ?: return null
             return try {
                 val edge = gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE)
@@ -366,7 +372,10 @@ class GraphHopperEngine
                     while (iter.next()) {
                         if (iter.edge == edgeId.toInt()) continue
                         val name = iter.getName().takeIf { it.isNotBlank() }
-                        if (name != null) return name
+                        if (name != null) {
+                            nearestNameCache[edgeId] = name
+                            return name
+                        }
                         if (depth < NEAREST_STREET_MAX_HOPS) queue.add(iter.adjNode to depth + 1)
                     }
                 }

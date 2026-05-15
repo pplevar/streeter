@@ -6,15 +6,25 @@ import kotlinx.coroutines.flow.Flow
 interface StreetRepository {
     suspend fun upsertStreet(street: Street): Long
 
+    suspend fun upsertStreets(streets: List<Street>): List<Long>
+
     suspend fun getSectionsByStreetId(streetId: Long): List<StreetSection>
 
     suspend fun upsertSection(section: StreetSection)
 
+    suspend fun upsertSections(sections: List<StreetSection>)
+
     suspend fun getSectionByStableId(stableId: String): StreetSection?
+
+    suspend fun getSectionsByStableIds(stableIds: List<String>): List<StreetSection>
 
     suspend fun insertWalkStreetCoverage(coverage: WalkStreetCoverage)
 
+    suspend fun insertWalkStreetCoverages(coverages: List<WalkStreetCoverage>)
+
     suspend fun insertWalkSectionCoverage(coverage: WalkSectionCoverage)
+
+    suspend fun insertWalkSectionCoverages(coverages: List<WalkSectionCoverage>)
 
     suspend fun deleteWalkCoverageForWalk(walkId: Long)
 

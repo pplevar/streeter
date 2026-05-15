@@ -25,11 +25,16 @@ class StreetCoverageEngine
     constructor(
         private val streetRepository: StreetRepository,
         private val routingEngine: RoutingEngine,
+        private val transactionRunner: TransactionRunner,
     ) {
-        private data class WayResult(
-            val streetId: Long,
+        private data class WayInfo(
+            val wayId: Long,
             val streetName: String,
             val edgeLengthM: Double,
+            val totalLengthM: Double,
+            val stableId: String,
+            val nameHash: String,
+            val osmDataVersion: Long,
         )
 
         /**
@@ -39,6 +44,9 @@ class StreetCoverageEngine
          * Multiple OSM ways can share the same street name. We process each way independently,
          * then aggregate all ways with the same name into a single [WalkStreetCoverage] record
          * before persisting — so each named street appears exactly once.
+         *
+         * Performance: all DB writes are batched into a single transaction to avoid per-row
+         * fsyncs, which reduces wall-clock time from minutes to seconds on typical walks.
          */
         suspend fun computeAndPersistCoverage(
             walkId: Long,
@@ -47,96 +55,98 @@ class StreetCoverageEngine
         ) = withContext(Dispatchers.IO) {
             Timber.d("Computing coverage for walk=$walkId, ways=${matchedWayIds.size}")
 
-            // Delete existing coverage for this walk (recalculation scenario)
-            streetRepository.deleteWalkCoverageForWalk(walkId)
+            // Pre-warm the street length index so the O(E) graph scan doesn't stall the first
+            // iteration of Phase 1.
+            routingEngine.getStreetTotalLength("__warmup__")
 
-            // Reuse a single MessageDigest to avoid per-call allocation overhead.
             val md5Digest = MessageDigest.getInstance("MD5")
-
-            // Process each way and collect intermediate results
             val distinctWayIds = matchedWayIds.distinct()
             val total = distinctWayIds.size
-            val wayResults = ArrayList<WayResult>(total)
+            val osmDataVersion = System.currentTimeMillis()
+
+            // Phase 1: CPU-only — resolve all street info from the in-memory graph (no DB I/O)
+            val wayInfoList = ArrayList<WayInfo>(total)
             for ((index, wayId) in distinctWayIds.withIndex()) {
-                wayResults += processWayId(wayId, walkId, md5Digest)
+                val streetName =
+                    routingEngine.getStreetName(wayId)
+                        ?: routingEngine.findNearestNamedStreet(wayId)
+                        ?: "Way $wayId"
+                val edgeLengthM = routingEngine.getEdgeLength(wayId) ?: 100.0
+                val totalLengthM = routingEngine.getStreetTotalLength(streetName) ?: edgeLengthM
+                val stableId = generateStableId(streetName, wayId, wayId + 1, md5Digest)
+                val nameHash = md5(streetName, md5Digest)
+                wayInfoList += WayInfo(wayId, streetName, edgeLengthM, totalLengthM, stableId, nameHash, osmDataVersion)
                 if (index % 20 == 19 || index == total - 1) {
                     onProgress?.invoke(index + 1, total)
                 }
             }
 
-            // Aggregate ways that share the same street name into one coverage record
-            val byStreetName = wayResults.groupBy { it.streetName }
-            for ((streetName, results) in byStreetName) {
-                val walkedLengthM = results.sumOf { it.edgeLengthM }
-                val totalLengthM = routingEngine.getStreetTotalLength(streetName) ?: walkedLengthM
-                val coveragePct = (walkedLengthM / totalLengthM).toFloat().coerceIn(0f, 1f)
-                val representativeStreetId = results.first().streetId
+            // Phase 2: Single batch read — find which sections already exist in the DB
+            val stableIds = wayInfoList.map { it.stableId }
+            val existingStableIds =
+                streetRepository.getSectionsByStableIds(stableIds)
+                    .map { it.stableId }
+                    .toHashSet()
 
-                streetRepository.insertWalkStreetCoverage(
-                    WalkStreetCoverage(
-                        walkId = walkId,
-                        streetId = representativeStreetId,
-                        streetName = streetName,
-                        coveragePct = coveragePct,
-                        walkedLengthM = walkedLengthM,
-                    ),
+            // Phase 3: All DB writes in a single transaction (one fsync instead of hundreds)
+            transactionRunner.run {
+                streetRepository.deleteWalkCoverageForWalk(walkId)
+
+                val streetIds =
+                    streetRepository.upsertStreets(
+                        wayInfoList.map { wi ->
+                            Street(
+                                osmWayId = wi.wayId,
+                                name = wi.streetName,
+                                cityTotalLengthM = wi.totalLengthM,
+                                osmDataVersion = wi.osmDataVersion,
+                                osmNameHash = wi.nameHash,
+                            )
+                        },
+                    )
+
+                val newSections =
+                    wayInfoList.zip(streetIds)
+                        .filter { (wi, _) -> wi.stableId !in existingStableIds }
+                        .map { (wi, streetId) ->
+                            StreetSection(
+                                streetId = streetId,
+                                fromNodeOsmId = wi.wayId,
+                                toNodeOsmId = wi.wayId + 1,
+                                lengthM = wi.edgeLengthM,
+                                geometryJson = "",
+                                stableId = wi.stableId,
+                                isOrphaned = false,
+                            )
+                        }
+                if (newSections.isNotEmpty()) {
+                    streetRepository.upsertSections(newSections)
+                }
+
+                streetRepository.insertWalkSectionCoverages(
+                    wayInfoList.map { wi ->
+                        WalkSectionCoverage(walkId = walkId, sectionStableId = wi.stableId, coveredPct = 1.0f)
+                    },
+                )
+
+                val byStreetName = wayInfoList.zip(streetIds).groupBy { (wi, _) -> wi.streetName }
+                streetRepository.insertWalkStreetCoverages(
+                    byStreetName.map { (streetName, pairs) ->
+                        val walkedLengthM = pairs.sumOf { (wi, _) -> wi.edgeLengthM }
+                        val totalLengthM = routingEngine.getStreetTotalLength(streetName) ?: walkedLengthM
+                        val coveragePct = (walkedLengthM / totalLengthM).toFloat().coerceIn(0f, 1f)
+                        WalkStreetCoverage(
+                            walkId = walkId,
+                            streetId = pairs.first().second,
+                            streetName = streetName,
+                            coveragePct = coveragePct,
+                            walkedLengthM = walkedLengthM,
+                        )
+                    },
                 )
             }
 
-            Timber.d("Coverage computed for ${byStreetName.size} streets (from ${wayResults.size} ways)")
-        }
-
-        private suspend fun processWayId(
-            wayId: Long,
-            walkId: Long,
-            md5Digest: MessageDigest,
-        ): WayResult {
-            val streetName =
-                routingEngine.getStreetName(wayId)
-                    ?: routingEngine.findNearestNamedStreet(wayId)
-                    ?: "Way $wayId"
-            val edgeLengthM = routingEngine.getEdgeLength(wayId) ?: 100.0
-            val totalLengthM = routingEngine.getStreetTotalLength(streetName) ?: edgeLengthM
-            val now = System.currentTimeMillis()
-            val nameHash = md5(streetName, md5Digest)
-
-            val streetId =
-                streetRepository.upsertStreet(
-                    Street(
-                        osmWayId = wayId,
-                        name = streetName,
-                        cityTotalLengthM = totalLengthM,
-                        osmDataVersion = now,
-                        osmNameHash = nameHash,
-                    ),
-                )
-
-            val stableId = generateStableId(streetName, wayId, wayId + 1, md5Digest)
-            val existingSection = streetRepository.getSectionByStableId(stableId)
-
-            if (existingSection == null) {
-                streetRepository.upsertSection(
-                    StreetSection(
-                        streetId = streetId,
-                        fromNodeOsmId = wayId,
-                        toNodeOsmId = wayId + 1,
-                        lengthM = edgeLengthM,
-                        geometryJson = "",
-                        stableId = stableId,
-                        isOrphaned = false,
-                    ),
-                )
-            }
-
-            streetRepository.insertWalkSectionCoverage(
-                WalkSectionCoverage(walkId = walkId, sectionStableId = stableId, coveredPct = 1.0f),
-            )
-
-            return WayResult(
-                streetId = streetId,
-                streetName = streetName,
-                edgeLengthM = edgeLengthM,
-            )
+            Timber.d("Coverage computed for ${wayInfoList.groupBy { it.streetName }.size} streets (from ${wayInfoList.size} ways)")
         }
 
         /**

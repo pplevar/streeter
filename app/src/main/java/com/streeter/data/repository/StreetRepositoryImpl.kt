@@ -16,12 +16,19 @@ class StreetRepositoryImpl
     ) : StreetRepository {
         override suspend fun upsertStreet(street: Street): Long = dao.upsertStreet(street.toEntity())
 
+        override suspend fun upsertStreets(streets: List<Street>): List<Long> = dao.upsertStreets(streets.map { it.toEntity() })
+
         override suspend fun getSectionsByStreetId(streetId: Long): List<StreetSection> =
             dao.getSectionsByStreetId(streetId).map { it.toDomain() }
 
         override suspend fun upsertSection(section: StreetSection) = dao.upsertSection(section.toEntity())
 
+        override suspend fun upsertSections(sections: List<StreetSection>) = dao.upsertSections(sections.map { it.toEntity() })
+
         override suspend fun getSectionByStableId(stableId: String): StreetSection? = dao.getSectionByStableId(stableId)?.toDomain()
+
+        override suspend fun getSectionsByStableIds(stableIds: List<String>): List<StreetSection> =
+            dao.getSectionsByStableIds(stableIds).map { it.toDomain() }
 
         override suspend fun insertWalkStreetCoverage(coverage: WalkStreetCoverage) =
             dao.insertWalkStreet(
@@ -33,6 +40,18 @@ class StreetRepositoryImpl
                 ),
             )
 
+        override suspend fun insertWalkStreetCoverages(coverages: List<WalkStreetCoverage>) =
+            dao.insertWalkStreets(
+                coverages.map { c ->
+                    WalkStreetEntity(
+                        walkId = c.walkId,
+                        streetId = c.streetId,
+                        coveragePct = c.coveragePct,
+                        walkedLengthM = c.walkedLengthM,
+                    )
+                },
+            )
+
         override suspend fun insertWalkSectionCoverage(coverage: WalkSectionCoverage) =
             dao.insertWalkSection(
                 WalkSectionEntity(
@@ -40,6 +59,17 @@ class StreetRepositoryImpl
                     sectionStableId = coverage.sectionStableId,
                     coveredPct = coverage.coveredPct,
                 ),
+            )
+
+        override suspend fun insertWalkSectionCoverages(coverages: List<WalkSectionCoverage>) =
+            dao.insertWalkSections(
+                coverages.map { c ->
+                    WalkSectionEntity(
+                        walkId = c.walkId,
+                        sectionStableId = c.sectionStableId,
+                        coveredPct = c.coveredPct,
+                    )
+                },
             )
 
         override suspend fun deleteWalkCoverageForWalk(walkId: Long) {
