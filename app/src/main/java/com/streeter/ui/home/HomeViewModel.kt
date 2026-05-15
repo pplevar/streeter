@@ -2,6 +2,7 @@ package com.streeter.ui.home
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import timber.log.Timber
 import javax.inject.Inject
 import kotlin.math.roundToInt
 
@@ -29,6 +31,7 @@ class HomeViewModel
     constructor(
         private val walkRepository: WalkRepository,
         private val streetRepository: StreetRepository,
+        private val routingEngine: RoutingEngine,
     ) : ViewModel() {
         init {
             if (!LocationService.isRunning) {
@@ -42,6 +45,16 @@ class HomeViewModel
                         )
                         stale = walkRepository.getActiveRecordingWalk()
                     }
+                }
+            }
+            viewModelScope.launch {
+                try {
+                    if (!routingEngine.isReady()) {
+                        Timber.d("Pre-warming routing engine from HomeViewModel")
+                        routingEngine.initialize()
+                    }
+                } catch (e: Exception) {
+                    Timber.w(e, "Pre-warming routing engine failed (worker will retry)")
                 }
             }
         }

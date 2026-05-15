@@ -125,6 +125,9 @@ class GraphHopperEngine
                             )
                         initialized = true
                         Timber.i("GraphHopper initialized successfully; bounds: %s", graphBounds)
+                        // Eagerly build the street index so coverage computation doesn't pay
+                        // the O(E) scan cost at the start of its first invocation.
+                        ensureStreetIndex()
                     } catch (e: java.io.FileNotFoundException) {
                         Timber.w("GraphHopper: %s", e.message)
                         throw e

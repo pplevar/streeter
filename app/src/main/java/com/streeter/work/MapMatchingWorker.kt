@@ -19,6 +19,9 @@ import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonArray
@@ -102,7 +105,17 @@ class MapMatchingWorker
                             if (isStopped) return@withContext Result.retry()
 
                             setProgress(workDataOf(KEY_PROGRESS to 20, KEY_STEP to "Matching route to streets…"))
-                            val matchResult = routingEngine.matchTrace(points)
+                            val matchResult = coroutineScope {
+                                launch {
+                                    var heartbeatPct = 20
+                                    while (heartbeatPct < 48) {
+                                        delay(3_000L)
+                                        heartbeatPct = (heartbeatPct + 4).coerceAtMost(48)
+                                        setProgress(workDataOf(KEY_PROGRESS to heartbeatPct, KEY_STEP to "Matching route to streets…"))
+                                    }
+                                }
+                                routingEngine.matchTrace(points)
+                            }
                             if (matchResult.isFailure) {
                                 Timber.w(
                                     "Map matching failed for walk" +

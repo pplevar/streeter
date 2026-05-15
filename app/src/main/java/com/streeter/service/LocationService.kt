@@ -16,6 +16,7 @@ import androidx.work.WorkManager
 import com.google.android.gms.location.*
 import com.streeter.MainActivity
 import com.streeter.R
+import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.JobStatus
 import com.streeter.domain.model.PendingMatchJob
@@ -54,6 +55,8 @@ class LocationService : LifecycleService() {
     @Inject lateinit var gpsPointRepository: GpsPointRepository
 
     @Inject lateinit var pendingMatchJobRepository: PendingMatchJobRepository
+
+    @Inject lateinit var routingEngine: RoutingEngine
 
     private val workManager by lazy { WorkManager.getInstance(applicationContext) }
 
@@ -139,6 +142,16 @@ class LocationService : LifecycleService() {
             _isPaused.value = false
             startLocationUpdates()
             Timber.d("Walk started, id=$walkId")
+        }
+        lifecycleScope.launch {
+            try {
+                if (!routingEngine.isReady()) {
+                    Timber.d("Pre-warming routing engine from LocationService.startWalk")
+                    routingEngine.initialize()
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "LocationService: routing engine pre-warm failed")
+            }
         }
     }
 
