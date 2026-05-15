@@ -163,11 +163,13 @@ private fun SyncBanner(
     val contentColor = if (hasFailed) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
     val buttonColor = if (hasFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
-    val message = when {
-        hasFailed && pendingCount == 0 -> "$failedCount ${if (failedCount == 1) "walk" else "walks"} failed to sync"
-        hasFailed -> "$failedCount failed · $pendingCount pending"
-        else -> "$pendingCount ${if (pendingCount == 1) "walk" else "walks"} not synced"
-    }
+
+    val message =
+        when {
+            hasFailed && pendingCount == 0 -> "$failedCount ${if (failedCount == 1) "walk" else "walks"} failed to sync"
+            hasFailed -> "$failedCount failed · $pendingCount pending"
+            else -> "$pendingCount ${if (pendingCount == 1) "walk" else "walks"} not synced"
+        }
     val buttonLabel = if (hasFailed) "Retry" else "Sync"
 
     Surface(modifier = modifier.fillMaxWidth(), color = bg, shape = RoundedCornerShape(16.dp)) {

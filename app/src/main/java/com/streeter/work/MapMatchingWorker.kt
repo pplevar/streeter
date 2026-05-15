@@ -105,17 +105,18 @@ class MapMatchingWorker
                             if (isStopped) return@withContext Result.retry()
 
                             setProgress(workDataOf(KEY_PROGRESS to 20, KEY_STEP to "Matching route to streets…"))
-                            val matchResult = coroutineScope {
-                                launch {
-                                    var heartbeatPct = 20
-                                    while (heartbeatPct < 48) {
-                                        delay(3_000L)
-                                        heartbeatPct = (heartbeatPct + 4).coerceAtMost(48)
-                                        setProgress(workDataOf(KEY_PROGRESS to heartbeatPct, KEY_STEP to "Matching route to streets…"))
+                            val matchResult =
+                                coroutineScope {
+                                    launch {
+                                        var heartbeatPct = 20
+                                        while (heartbeatPct < 48) {
+                                            delay(3_000L)
+                                            heartbeatPct = (heartbeatPct + 4).coerceAtMost(48)
+                                            setProgress(workDataOf(KEY_PROGRESS to heartbeatPct, KEY_STEP to "Matching route to streets…"))
+                                        }
                                     }
+                                    routingEngine.matchTrace(points)
                                 }
-                                routingEngine.matchTrace(points)
-                            }
                             if (matchResult.isFailure) {
                                 Timber.w(
                                     "Map matching failed for walk" +
