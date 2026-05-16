@@ -1,6 +1,7 @@
 package com.streeter.data.repository
 
 import android.content.Context
+import androidx.core.content.edit
 import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkManager
 import com.streeter.data.remote.api.StreeterApiService
@@ -99,14 +100,14 @@ class RemoteSyncRepositoryImpl
 
                 if (lastSyncedAt > since) {
                     val prefs = context.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
-                    prefs.edit().putLong("last_pull_sync_at", lastSyncedAt).apply()
+                    prefs.edit { putLong("last_pull_sync_at", lastSyncedAt) }
                 }
             }
 
         private fun getOrCreateClientId(): String {
             val prefs = context.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
             return prefs.getString("client_id", null) ?: UUID.randomUUID().toString().also {
-                prefs.edit().putString("client_id", it).apply()
+                prefs.edit { putString("client_id", it) }
             }
         }
     }

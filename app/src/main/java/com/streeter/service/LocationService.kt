@@ -78,7 +78,6 @@ class LocationService : LifecycleService() {
     val currentPoints: StateFlow<List<GpsPoint>> = _currentPoints.asStateFlow()
 
     private val _isRecording = MutableStateFlow(false)
-    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
 
     private val _isPaused = MutableStateFlow(false)
     val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
@@ -159,7 +158,7 @@ class LocationService : LifecycleService() {
         if (!_isRecording.value || _isPaused.value) return
         stopLocationUpdates()
         _isPaused.value = true
-        updateNotification(paused = true)
+        updateNotification()
 
         lifecycleScope.launch {
             flushPoints()
@@ -289,7 +288,7 @@ class LocationService : LifecycleService() {
         try {
             fusedClient?.requestLocationUpdates(request, locationCallback!!, mainLooper)
         } catch (e: SecurityException) {
-            Timber.e("Location permission not granted")
+            Timber.e(e, "Location permission not granted")
         }
     }
 
@@ -348,9 +347,9 @@ class LocationService : LifecycleService() {
         nm.createNotificationChannel(channel)
     }
 
-    private fun updateNotification(paused: Boolean) {
+    private fun updateNotification() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIFICATION_ID, buildNotification(paused))
+        nm.notify(NOTIFICATION_ID, buildNotification(paused = true))
     }
 
     private fun buildNotification(paused: Boolean): Notification {

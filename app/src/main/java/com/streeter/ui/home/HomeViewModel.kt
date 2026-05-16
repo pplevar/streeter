@@ -30,7 +30,7 @@ class HomeViewModel
     @Inject
     constructor(
         private val walkRepository: WalkRepository,
-        private val streetRepository: StreetRepository,
+        streetRepository: StreetRepository,
         private val routingEngine: RoutingEngine,
     ) : ViewModel() {
         init {

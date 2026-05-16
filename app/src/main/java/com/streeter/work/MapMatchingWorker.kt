@@ -88,7 +88,7 @@ class MapMatchingWorker
                         return@withContext Result.failure()
                     }
 
-                    var matchedDistanceM = 0.0
+                    var matchedDistanceM: Double
                     val wayIds: List<Long> =
                         if (walk.source == WalkSource.RECORDED) {
                             // GPS trace → map match → get way IDs
