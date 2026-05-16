@@ -163,7 +163,6 @@ private fun SyncBanner(
     val contentColor = if (hasFailed) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurface
     val buttonColor = if (hasFailed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
 
-
     val message =
         when {
             hasFailed && pendingCount == 0 -> "$failedCount ${if (failedCount == 1) "walk" else "walks"} failed to sync"
