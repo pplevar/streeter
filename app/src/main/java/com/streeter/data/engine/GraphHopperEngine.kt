@@ -22,6 +22,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,6 +54,11 @@ class GraphHopperEngine
             // Bump when the cached graph format changes (e.g., LM profile added) to force a rebuild.
             private const val GRAPH_CACHE_VERSION = "v2-lm"
             private const val NEAREST_STREET_MAX_HOPS = 3
+
+            // Persisted street-name index, stored inside the graph dir so it's wiped on rebuild.
+            // Magic = "STID" — bump if the on-disk format changes.
+            private const val STREET_INDEX_FILE = "street_index.bin"
+            private const val STREET_INDEX_MAGIC = 0x53544944
         }
 
         override suspend fun isReady(): Boolean = initialized
@@ -337,6 +346,15 @@ class GraphHopperEngine
         private fun ensureStreetIndex() {
             if (streetLengthIndex != null) return
             val gh = hopper ?: return
+
+            val cacheFile = File(File(context.filesDir, "graphhopper"), STREET_INDEX_FILE)
+            loadStreetIndexFromDisk(cacheFile)?.let { (lengths, edges) ->
+                streetLengthIndex = lengths
+                streetEdgeIndex = edges
+                Timber.d("Street index loaded from disk cache: ${lengths.size} named streets")
+                return
+            }
+
             val lengthIndex = mutableMapOf<String, Double>()
             val edgeIndex = mutableMapOf<String, MutableList<Int>>()
             val allEdges = gh.baseGraph.getAllEdges()
@@ -348,6 +366,62 @@ class GraphHopperEngine
             streetLengthIndex = lengthIndex
             streetEdgeIndex = edgeIndex
             Timber.d("Street index built: ${lengthIndex.size} named streets")
+
+            saveStreetIndexToDisk(cacheFile, lengthIndex, edgeIndex)
+        }
+
+        private fun loadStreetIndexFromDisk(file: File): Pair<Map<String, Double>, Map<String, List<Int>>>? {
+            if (!file.exists()) return null
+            return try {
+                DataInputStream(BufferedInputStream(file.inputStream())).use { dis ->
+                    if (dis.readInt() != STREET_INDEX_MAGIC) return null
+                    val count = dis.readInt()
+                    val lengths = HashMap<String, Double>(count)
+                    val edges = HashMap<String, List<Int>>(count)
+                    repeat(count) {
+                        val name = dis.readUTF()
+                        lengths[name] = dis.readDouble()
+                        val edgeCount = dis.readInt()
+                        val ids = IntArray(edgeCount)
+                        for (i in 0 until edgeCount) ids[i] = dis.readInt()
+                        edges[name] = ids.toList()
+                    }
+                    lengths to edges
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Street index cache unreadable, will rebuild")
+                runCatching { file.delete() }
+                null
+            }
+        }
+
+        private fun saveStreetIndexToDisk(
+            file: File,
+            lengths: Map<String, Double>,
+            edges: Map<String, List<Int>>,
+        ) {
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            try {
+                DataOutputStream(BufferedOutputStream(tmp.outputStream())).use { dos ->
+                    dos.writeInt(STREET_INDEX_MAGIC)
+                    dos.writeInt(lengths.size)
+                    for ((name, length) in lengths) {
+                        dos.writeUTF(name)
+                        dos.writeDouble(length)
+                        val ids = edges[name] ?: emptyList()
+                        dos.writeInt(ids.size)
+                        for (id in ids) dos.writeInt(id)
+                    }
+                }
+                if (file.exists()) file.delete()
+                if (!tmp.renameTo(file)) {
+                    Timber.w("Failed to commit street index cache file")
+                    tmp.delete()
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to write street index cache")
+                runCatching { tmp.delete() }
+            }
         }
 
         override fun getEdgeGeometriesForStreet(streetName: String): List<String> {
