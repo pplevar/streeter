@@ -103,11 +103,45 @@ class GpsOutlierFilterTest {
     }
 
     @Test
-    fun `stationary points are kept`() {
-        // GPS jitter while standing still still satisfies the speed bound.
+    fun `stationary points are filtered`() {
+        // Standing still produces a tight cluster of GPS samples with near-zero implied
+        // speed. These get dropped by the lower bound so the cluster doesn't bloat the
+        // recorded track.
         val p1 = point(51.5074, -0.1278, 0L)
         val p2 = point(51.5074, -0.1278, 5_000L)
-        assertTrue(GpsOutlierFilter.shouldKeep(p1, p2, 50f))
+        assertFalse(GpsOutlierFilter.shouldKeep(p1, p2))
+    }
+
+    @Test
+    fun `jitter cluster wider than radius is still filtered`() {
+        // The original concern: anchor + radius fails when two jittered samples are
+        // > 2 m apart (e.g. 3 m diameter cluster while stationary). The implied-speed
+        // check catches them because 3 m / 20 s ≈ 0.54 km/h, still below the 0.5 default
+        // when the jump is small enough — and clearly below a slow-walk threshold.
+        val p1 = point(0.0, 0.0, 0L)
+        // ~2.7 m east in 20 s → ~0.49 km/h, below the 0.5 km/h default.
+        val p2 = point(0.0, 0.000_024_3, 20_000L)
+        val dist = GpsOutlierFilter.haversineMeters(0.0, 0.0, 0.0, 0.000_024_3)
+        assertTrue("distance was $dist m, expected ~2.7 m", dist in 2.5..3.0)
+        assertFalse(GpsOutlierFilter.shouldKeep(p1, p2))
+    }
+
+    @Test
+    fun `slow walking just above min threshold is kept`() {
+        // ~6 m in 20 s ≈ 1.08 km/h — a slow pedestrian shuffle, clearly above 0.5 km/h.
+        val p1 = point(0.0, 0.0, 0L)
+        val p2 = point(0.0, 0.000_054, 20_000L)
+        val dist = GpsOutlierFilter.haversineMeters(0.0, 0.0, 0.0, 0.000_054)
+        assertTrue("distance was $dist m, expected ~6 m", dist in 5.5..6.5)
+        assertTrue(GpsOutlierFilter.shouldKeep(p1, p2))
+    }
+
+    @Test
+    fun `custom minSpeedKmh of zero disables lower bound`() {
+        // Opt-out: callers that don't want stationary filtering can pass 0.
+        val p1 = point(51.5074, -0.1278, 0L)
+        val p2 = point(51.5074, -0.1278, 5_000L)
+        assertTrue(GpsOutlierFilter.shouldKeep(p1, p2, minSpeedKmh = 0f))
     }
 
     // ---------------------------------------------------------------------

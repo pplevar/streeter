@@ -119,9 +119,9 @@ class MapMatchingWorker
                                 }
                             if (matchResult.isFailure) {
                                 Timber.w(
-                                    "Map matching failed for walk" +
-                                        "=$walkId: ${matchResult.exceptionOrNull()?.message}, " +
-                                        "completing without coverage",
+                                    "Map matching failed for walk=%d: %s, completing without coverage",
+                                    walkId,
+                                    matchResult.exceptionOrNull()?.message,
                                 )
                                 completeWalk(walkId)
                                 return@withContext Result.success()

@@ -6,18 +6,20 @@ import kotlin.math.*
 object GpsOutlierFilter {
     /**
      * Returns true if [current] should be kept (not filtered out).
-     * Filters points where the implied speed from [prev] exceeds [maxSpeedKmh].
+     * Filters points where the implied speed from [prev] exceeds [maxSpeedKmh]
+     * (GPS glitch) or falls below [minSpeedKmh] (stationary jitter cluster).
      */
     fun shouldKeep(
         prev: GpsPoint,
         current: GpsPoint,
         maxSpeedKmh: Float = 50f,
+        minSpeedKmh: Float = 0.5f,
     ): Boolean {
         val distM = haversineMeters(prev.lat, prev.lng, current.lat, current.lng)
         val elapsedS = (current.timestamp - prev.timestamp) / 1000.0
         if (elapsedS <= 0) return false
         val speedKmh = (distM / elapsedS) * 3.6
-        return speedKmh <= maxSpeedKmh
+        return speedKmh in minSpeedKmh.toDouble()..maxSpeedKmh.toDouble()
     }
 
     fun haversineMeters(

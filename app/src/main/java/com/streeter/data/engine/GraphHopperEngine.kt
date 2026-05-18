@@ -59,6 +59,8 @@ class GraphHopperEngine
             // Magic = "STID" — bump if the on-disk format changes.
             private const val STREET_INDEX_FILE = "street_index.bin"
             private const val STREET_INDEX_MAGIC = 0x53544944
+
+            private const val MIN_DEDUP_DISTANCE_METERS = 20.0
         }
 
         override suspend fun isReady(): Boolean = initialized
@@ -175,7 +177,7 @@ class GraphHopperEngine
                 try {
                     // 20 m threshold: keeps enough detail for accurate matching while halving
                     // the observation count versus 10 m, cutting HMM transition work ~4×.
-                    val deduplicated = deduplicatePoints(points, minDistanceMeters = 20.0)
+                    val deduplicated = deduplicatePoints(points)
                     if (deduplicated.size < 2) {
                         return@withContext Result.failure(
                             IllegalArgumentException("Trace collapses to fewer than 2 points after deduplication"),
@@ -332,7 +334,7 @@ class GraphHopperEngine
         override fun getEdgeLength(edgeId: Long): Double? {
             val gh = hopper ?: return null
             return try {
-                gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE).distance.toDouble()
+                gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE).distance
             } catch (_: Exception) {
                 null
             }
@@ -489,18 +491,16 @@ class GraphHopperEngine
         }
 
         /**
-         * Removes consecutive GPS points that are closer than [minDistanceMeters] to the previous
-         * kept point. This prevents the GraphHopper QueryGraph from creating more virtual nodes than
-         * its internal array can accommodate, which causes IndexOutOfBoundsException during matching.
+         * Removes consecutive GPS points that are closer than [MIN_DEDUP_DISTANCE_METERS] to the
+         * previous kept point. This prevents the GraphHopper QueryGraph from creating more virtual
+         * nodes than its internal array can accommodate, which causes IndexOutOfBoundsException
+         * during matching.
          */
-        private fun deduplicatePoints(
-            points: List<GpsPoint>,
-            minDistanceMeters: Double,
-        ): List<GpsPoint> {
+        private fun deduplicatePoints(points: List<GpsPoint>): List<GpsPoint> {
             val result = mutableListOf(points.first())
             for (pt in points.drop(1)) {
                 val prev = result.last()
-                if (haversineMeters(prev.lat, prev.lng, pt.lat, pt.lng) >= minDistanceMeters) {
+                if (haversineMeters(prev.lat, prev.lng, pt.lat, pt.lng) >= MIN_DEDUP_DISTANCE_METERS) {
                     result += pt
                 }
             }
