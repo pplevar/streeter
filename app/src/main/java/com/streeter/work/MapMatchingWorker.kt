@@ -88,7 +88,7 @@ class MapMatchingWorker
                         return@withContext Result.failure()
                     }
 
-                    var matchedDistanceM = 0.0
+                    var matchedDistanceM: Double
                     val wayIds: List<Long> =
                         if (walk.source == WalkSource.RECORDED) {
                             // GPS trace → map match → get way IDs
@@ -119,9 +119,9 @@ class MapMatchingWorker
                                 }
                             if (matchResult.isFailure) {
                                 Timber.w(
-                                    "Map matching failed for walk" +
-                                        "=$walkId: ${matchResult.exceptionOrNull()?.message}, " +
-                                        "completing without coverage",
+                                    "Map matching failed for walk=%d: %s, completing without coverage",
+                                    walkId,
+                                    matchResult.exceptionOrNull()?.message,
                                 )
                                 completeWalk(walkId)
                                 return@withContext Result.success()

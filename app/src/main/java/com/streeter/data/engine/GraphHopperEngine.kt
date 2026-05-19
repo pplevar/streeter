@@ -22,6 +22,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import timber.log.Timber
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
+import java.io.DataInputStream
+import java.io.DataOutputStream
 import java.io.File
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,6 +54,13 @@ class GraphHopperEngine
             // Bump when the cached graph format changes (e.g., LM profile added) to force a rebuild.
             private const val GRAPH_CACHE_VERSION = "v2-lm"
             private const val NEAREST_STREET_MAX_HOPS = 3
+
+            // Persisted street-name index, stored inside the graph dir so it's wiped on rebuild.
+            // Magic = "STID" — bump if the on-disk format changes.
+            private const val STREET_INDEX_FILE = "street_index.bin"
+            private const val STREET_INDEX_MAGIC = 0x53544944
+
+            private const val MIN_DEDUP_DISTANCE_METERS = 20.0
         }
 
         override suspend fun isReady(): Boolean = initialized
@@ -166,7 +177,7 @@ class GraphHopperEngine
                 try {
                     // 20 m threshold: keeps enough detail for accurate matching while halving
                     // the observation count versus 10 m, cutting HMM transition work ~4×.
-                    val deduplicated = deduplicatePoints(points, minDistanceMeters = 20.0)
+                    val deduplicated = deduplicatePoints(points)
                     if (deduplicated.size < 2) {
                         return@withContext Result.failure(
                             IllegalArgumentException("Trace collapses to fewer than 2 points after deduplication"),
@@ -323,7 +334,7 @@ class GraphHopperEngine
         override fun getEdgeLength(edgeId: Long): Double? {
             val gh = hopper ?: return null
             return try {
-                gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE).distance.toDouble()
+                gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE).distance
             } catch (_: Exception) {
                 null
             }
@@ -337,6 +348,15 @@ class GraphHopperEngine
         private fun ensureStreetIndex() {
             if (streetLengthIndex != null) return
             val gh = hopper ?: return
+
+            val cacheFile = File(File(context.filesDir, "graphhopper"), STREET_INDEX_FILE)
+            loadStreetIndexFromDisk(cacheFile)?.let { (lengths, edges) ->
+                streetLengthIndex = lengths
+                streetEdgeIndex = edges
+                Timber.d("Street index loaded from disk cache: ${lengths.size} named streets")
+                return
+            }
+
             val lengthIndex = mutableMapOf<String, Double>()
             val edgeIndex = mutableMapOf<String, MutableList<Int>>()
             val allEdges = gh.baseGraph.getAllEdges()
@@ -348,6 +368,62 @@ class GraphHopperEngine
             streetLengthIndex = lengthIndex
             streetEdgeIndex = edgeIndex
             Timber.d("Street index built: ${lengthIndex.size} named streets")
+
+            saveStreetIndexToDisk(cacheFile, lengthIndex, edgeIndex)
+        }
+
+        private fun loadStreetIndexFromDisk(file: File): Pair<Map<String, Double>, Map<String, List<Int>>>? {
+            if (!file.exists()) return null
+            return try {
+                DataInputStream(BufferedInputStream(file.inputStream())).use { dis ->
+                    if (dis.readInt() != STREET_INDEX_MAGIC) return null
+                    val count = dis.readInt()
+                    val lengths = HashMap<String, Double>(count)
+                    val edges = HashMap<String, List<Int>>(count)
+                    repeat(count) {
+                        val name = dis.readUTF()
+                        lengths[name] = dis.readDouble()
+                        val edgeCount = dis.readInt()
+                        val ids = IntArray(edgeCount)
+                        for (i in 0 until edgeCount) ids[i] = dis.readInt()
+                        edges[name] = ids.toList()
+                    }
+                    lengths to edges
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Street index cache unreadable, will rebuild")
+                runCatching { file.delete() }
+                null
+            }
+        }
+
+        private fun saveStreetIndexToDisk(
+            file: File,
+            lengths: Map<String, Double>,
+            edges: Map<String, List<Int>>,
+        ) {
+            val tmp = File(file.parentFile, "${file.name}.tmp")
+            try {
+                DataOutputStream(BufferedOutputStream(tmp.outputStream())).use { dos ->
+                    dos.writeInt(STREET_INDEX_MAGIC)
+                    dos.writeInt(lengths.size)
+                    for ((name, length) in lengths) {
+                        dos.writeUTF(name)
+                        dos.writeDouble(length)
+                        val ids = edges[name] ?: emptyList()
+                        dos.writeInt(ids.size)
+                        for (id in ids) dos.writeInt(id)
+                    }
+                }
+                if (file.exists()) file.delete()
+                if (!tmp.renameTo(file)) {
+                    Timber.w("Failed to commit street index cache file")
+                    tmp.delete()
+                }
+            } catch (e: Exception) {
+                Timber.w(e, "Failed to write street index cache")
+                runCatching { tmp.delete() }
+            }
         }
 
         override fun getEdgeGeometriesForStreet(streetName: String): List<String> {
@@ -415,18 +491,16 @@ class GraphHopperEngine
         }
 
         /**
-         * Removes consecutive GPS points that are closer than [minDistanceMeters] to the previous
-         * kept point. This prevents the GraphHopper QueryGraph from creating more virtual nodes than
-         * its internal array can accommodate, which causes IndexOutOfBoundsException during matching.
+         * Removes consecutive GPS points that are closer than [MIN_DEDUP_DISTANCE_METERS] to the
+         * previous kept point. This prevents the GraphHopper QueryGraph from creating more virtual
+         * nodes than its internal array can accommodate, which causes IndexOutOfBoundsException
+         * during matching.
          */
-        private fun deduplicatePoints(
-            points: List<GpsPoint>,
-            minDistanceMeters: Double,
-        ): List<GpsPoint> {
+        private fun deduplicatePoints(points: List<GpsPoint>): List<GpsPoint> {
             val result = mutableListOf(points.first())
             for (pt in points.drop(1)) {
                 val prev = result.last()
-                if (haversineMeters(prev.lat, prev.lng, pt.lat, pt.lng) >= minDistanceMeters) {
+                if (haversineMeters(prev.lat, prev.lng, pt.lat, pt.lng) >= MIN_DEDUP_DISTANCE_METERS) {
                     result += pt
                 }
             }

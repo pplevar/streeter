@@ -185,7 +185,7 @@ class HistoryViewModel
         fun triggerPullSync() {
             workManager.enqueueUniqueWork(
                 PullSyncWorker.UNIQUE_WORK_NAME,
-                androidx.work.ExistingWorkPolicy.REPLACE,
+                ExistingWorkPolicy.REPLACE,
                 PullSyncWorker.buildOneTimeRequest(),
             )
         }

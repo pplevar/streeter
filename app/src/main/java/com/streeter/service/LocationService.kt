@@ -77,8 +77,7 @@ class LocationService : LifecycleService() {
     private val _currentPoints = MutableStateFlow<List<GpsPoint>>(emptyList())
     val currentPoints: StateFlow<List<GpsPoint>> = _currentPoints.asStateFlow()
 
-    private val _isRecording = MutableStateFlow(false)
-    val isRecording: StateFlow<Boolean> = _isRecording.asStateFlow()
+    private val isRecording = MutableStateFlow(false)
 
     private val _isPaused = MutableStateFlow(false)
     val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
@@ -116,7 +115,7 @@ class LocationService : LifecycleService() {
     }
 
     private fun startWalk() {
-        if (_isRecording.value) return
+        if (isRecording.value) return
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(paused = false))
 
@@ -138,7 +137,7 @@ class LocationService : LifecycleService() {
                     ),
                 )
             currentWalkId = walkId
-            _isRecording.value = true
+            isRecording.value = true
             _isPaused.value = false
             startLocationUpdates()
             Timber.d("Walk started, id=$walkId")
@@ -156,10 +155,10 @@ class LocationService : LifecycleService() {
     }
 
     private fun pauseWalk() {
-        if (!_isRecording.value || _isPaused.value) return
+        if (!isRecording.value || _isPaused.value) return
         stopLocationUpdates()
         _isPaused.value = true
-        updateNotification(paused = true)
+        updateNotification()
 
         lifecycleScope.launch {
             flushPoints()
@@ -183,10 +182,10 @@ class LocationService : LifecycleService() {
     }
 
     private fun resumeWalk(walkId: Long) {
-        if (_isRecording.value && !_isPaused.value) return
+        if (isRecording.value && !_isPaused.value) return
         createNotificationChannel()
         currentWalkId = walkId
-        _isRecording.value = true
+        isRecording.value = true
         _isPaused.value = false
         startForeground(NOTIFICATION_ID, buildNotification(paused = false))
 
@@ -249,7 +248,7 @@ class LocationService : LifecycleService() {
             )
             Timber.w("Walk stopped: id=%d → PENDING_MATCH, worker enqueued", walkId)
             currentWalkId = -1L
-            _isRecording.value = false
+            isRecording.value = false
             _isPaused.value = false
             lastKeptPoint = null
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -289,7 +288,7 @@ class LocationService : LifecycleService() {
         try {
             fusedClient?.requestLocationUpdates(request, locationCallback!!, mainLooper)
         } catch (e: SecurityException) {
-            Timber.e("Location permission not granted")
+            Timber.e(e, "Location permission not granted")
         }
     }
 
@@ -348,9 +347,9 @@ class LocationService : LifecycleService() {
         nm.createNotificationChannel(channel)
     }
 
-    private fun updateNotification(paused: Boolean) {
+    private fun updateNotification() {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        nm.notify(NOTIFICATION_ID, buildNotification(paused))
+        nm.notify(NOTIFICATION_ID, buildNotification(paused = true))
     }
 
     private fun buildNotification(paused: Boolean): Notification {
