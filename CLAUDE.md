@@ -1,26 +1,5 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## Build & Test Commands
-
-```bash
-# Build
-./gradlew assembleDebug
-./gradlew assembleRelease
-
-# Run all unit tests
-./gradlew testDebugUnitTest
-
-# Run a single test class
-./gradlew testDebugUnitTest --tests "com.streeter.RouteEditOperationTest"
-
-# Run all checks (lint + tests)
-./gradlew check
-```
-
-Unit tests live in `app/src/test/` and run on the JVM (no emulator needed). Android instrumentation tests live in `app/src/androidTest/`.
-
 ## Architecture
 
 Clean architecture with three layers:
@@ -29,7 +8,7 @@ Clean architecture with three layers:
 - **`data/`** — implements domain interfaces: Room database (`local/`), repository implementations (`repository/`), and two engines (`engine/`).
 - **`ui/`** — Jetpack Compose screens + Hilt `ViewModel`s, one subdirectory per screen.
 
-DI wiring lives in `di/` (Hilt modules). `service/` holds `LocationService` (foreground). `work/` holds `MapMatchingWorker`. `map/` holds `TileServerManager`.
+- DI wiring lives in `di/` (Hilt modules). `service/` holds `LocationService` (foreground). `work/` holds `MapMatchingWorker`. `map/` holds `TileServerManager`.
 
 ## Key Data Flows
 
@@ -53,21 +32,11 @@ Two bundled assets are required for full functionality (not included in the repo
 | PMTiles | `app/src/main/assets/tiles/city.pmtiles` | Offline map tiles (NanoHTTPD tile server) |
 
 `GraphHopperEngine` copies the PBF to `filesDir/city.osm.pbf` on first run and builds a GraphHopper graph at `filesDir/graphhopper/`. Without the PBF, `MapMatchingWorker` will fail and retry.
-
 `TileServerManager` starts a loopback NanoHTTPD server (OS-assigned port) serving PMTiles. Without the PMTiles file, tile requests return 404 but MapLibre degrades gracefully.
 
 ## Navigation
 
 `StreeterNavGraph` in `ui/navigation/` defines all routes via the `Screen` sealed class. Entry point is `Screen.Home`. Deep links follow the scheme `streeter://walk/{walkId}` and `streeter://walk/{walkId}/edit`.
-
-## Tooling Preferences
-
-Use the `android` CLI (android-cli) as the preferred tool for:
-- **Emulator management** — `android emulator create/start/stop/list`
-- **APK deployment** — `android run`
-- **UI inspection** — `android layout`, `android screen capture`, `android screen resolve`
-- **SDK management** — `android sdk install/list/update/remove`
-- **Android docs** — `android docs search`
 
 Prefer `android` CLI over raw `adb` or `avdmanager` for these tasks. Continue using `./gradlew` for building and testing.
 
@@ -79,3 +48,17 @@ Prefer `android` CLI over raw `adb` or `avdmanager` for these tasks. Continue us
 | `RepositoryModule` | Repository interface → impl bindings |
 | `EngineModule` | `RoutingEngine` → `GraphHopperEngine` binding |
 | `WorkManagerModule` | `HiltWorkerFactory` for `MapMatchingWorker` |
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live as GitHub issues, managed via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles using the default label strings. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.
