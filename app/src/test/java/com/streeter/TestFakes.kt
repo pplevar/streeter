@@ -1,17 +1,24 @@
 package com.streeter
 
 import com.streeter.data.engine.TransactionRunner
+import com.streeter.data.remote.dto.WalkSyncDto
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.MatchResult
+import com.streeter.domain.model.PendingMatchJob
 import com.streeter.domain.model.RouteResult
 import com.streeter.domain.model.Street
 import com.streeter.domain.model.StreetSection
 import com.streeter.domain.model.StreetWalkEntry
+import com.streeter.domain.model.SyncStatus
+import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkSectionCoverage
 import com.streeter.domain.model.WalkStreetCoverage
+import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.StreetRepository
+import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkWorkScheduler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 
@@ -115,6 +122,114 @@ internal class RecordingStreetRepository : StreetRepository {
         walkId: Long,
         streetId: Long,
     ): List<Long> = emptyList()
+}
+
+/**
+ * In-memory [WalkRepository] holding a single mutable [Walk] keyed by id.
+ * Only the methods exercised by Calculation-finalization tests are backed; the rest
+ * are inert so the fake stays minimal.
+ */
+internal class FakeWalkRepository(
+    walks: List<Walk> = emptyList(),
+) : WalkRepository {
+    private val store = walks.associateBy { it.id }.toMutableMap()
+
+    override suspend fun getWalkById(id: Long): Walk? = store[id]
+
+    override suspend fun updateWalk(walk: Walk) {
+        store[walk.id] = walk
+    }
+
+    override suspend fun updateSyncStatus(
+        id: Long,
+        syncStatus: SyncStatus,
+        serverWalkId: Long?,
+    ) {
+        store[id]?.let { store[id] = it.copy(syncStatus = syncStatus, serverWalkId = serverWalkId) }
+    }
+
+    override suspend fun insertWalk(walk: Walk): Long {
+        store[walk.id] = walk
+        return walk.id
+    }
+
+    override suspend fun deleteWalk(id: Long) {
+        store.remove(id)
+    }
+
+    override fun getAllWalks(): Flow<List<Walk>> = flowOf(store.values.toList())
+
+    override fun observeWalk(id: Long): Flow<Walk?> = flowOf(store[id])
+
+    override suspend fun getActiveRecordingWalk(): Walk? = null
+
+    override fun getWalkWithCoverage(walkId: Long): Flow<List<WalkStreetCoverage>> = flowOf(emptyList())
+
+    override suspend fun getWalksPendingSync(): List<Walk> = emptyList()
+
+    override suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk? = store.values.firstOrNull { it.serverWalkId == serverWalkId }
+
+    override suspend fun getLastPullSyncAt(): Long? = null
+
+    override suspend fun upsertFromRemote(dto: WalkSyncDto) = Unit
+
+    override suspend fun updateLastPullSyncAt(
+        id: Long,
+        timestamp: Long,
+    ) = Unit
+
+    override suspend fun getGpsTraceSyncedAt(id: Long): Long? = null
+
+    override suspend fun updateGpsTraceSyncedAt(
+        id: Long,
+        timestamp: Long,
+    ) = Unit
+}
+
+/** In-memory [PendingMatchJobRepository] keyed by walkId. */
+internal class FakePendingMatchJobRepository(
+    jobs: List<PendingMatchJob> = emptyList(),
+) : PendingMatchJobRepository {
+    private val store = jobs.associateBy { it.walkId }.toMutableMap()
+
+    override suspend fun enqueue(job: PendingMatchJob): Long {
+        store[job.walkId] = job
+        return job.id
+    }
+
+    override suspend fun getJobForWalk(walkId: Long): PendingMatchJob? = store[walkId]
+
+    override suspend fun updateJob(job: PendingMatchJob) {
+        store[job.walkId] = job
+    }
+
+    override suspend fun deleteJobForWalk(walkId: Long) {
+        store.remove(walkId)
+    }
+}
+
+/** Records every scheduling call so tests can assert what was enqueued/cancelled. */
+internal class FakeWalkWorkScheduler : WalkWorkScheduler {
+    val newWalkProcessing = mutableListOf<Long>()
+    val calculationEnqueued = mutableListOf<Long>()
+    val calculationCancelled = mutableListOf<Long>()
+    val syncEnqueued = mutableListOf<Long>()
+
+    override fun enqueueNewWalkProcessing(walkId: Long) {
+        newWalkProcessing += walkId
+    }
+
+    override fun enqueueCalculation(walkId: Long) {
+        calculationEnqueued += walkId
+    }
+
+    override fun cancelCalculation(walkId: Long) {
+        calculationCancelled += walkId
+    }
+
+    override fun enqueueSync(walkId: Long) {
+        syncEnqueued += walkId
+    }
 }
 
 /**

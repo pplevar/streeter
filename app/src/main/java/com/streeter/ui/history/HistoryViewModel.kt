@@ -11,8 +11,8 @@ import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.work.PullSyncWorker
-import com.streeter.work.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,6 +51,7 @@ class HistoryViewModel
         private val routeSegmentRepository: RouteSegmentRepository,
         private val gpsPointRepository: GpsPointRepository,
         private val workManager: WorkManager,
+        private val walkWorkScheduler: WalkWorkScheduler,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(HistoryUiState())
         val uiState: StateFlow<HistoryUiState> = _uiState.asStateFlow()
@@ -196,11 +197,7 @@ class HistoryViewModel
                     it.syncStatus == SyncStatus.PENDING_SYNC || it.syncStatus == SyncStatus.SYNC_FAILED
                 }
             toSync.forEach { walk ->
-                workManager.enqueueUniqueWork(
-                    "sync_walk_${walk.id}",
-                    ExistingWorkPolicy.REPLACE,
-                    SyncWorker.buildRequest(walk.id),
-                )
+                walkWorkScheduler.enqueueSync(walk.id)
             }
         }
     }

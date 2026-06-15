@@ -216,6 +216,15 @@ fun WalkDetailScreen(
                                     progress = uiState.matchingProgress,
                                     step = uiState.progressStep,
                                 )
+                                Spacer(Modifier.height(8.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                                ) {
+                                    OutlinedButton(onClick = { viewModel.stopCalculation() }) {
+                                        Text("Stop")
+                                    }
+                                }
                             } else if (walk.status == WalkStatus.COMPLETED) {
                                 Spacer(Modifier.height(8.dp))
                                 Row(
@@ -250,7 +259,9 @@ fun WalkDetailScreen(
                                         }
                                     }
                                     OutlinedButton(onClick = { viewModel.recalculateRoute() }) {
-                                        Text("Recalculate Route")
+                                        Text(
+                                            if (uiState.streetCoverage.isEmpty()) "Calculate coverage" else "Recalculate Route",
+                                        )
                                     }
                                 }
                             }

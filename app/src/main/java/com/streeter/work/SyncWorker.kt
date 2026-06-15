@@ -15,6 +15,7 @@ import androidx.work.workDataOf
 import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.repository.RemoteSyncRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkWork
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import timber.log.Timber
@@ -64,7 +65,7 @@ class SyncWorker
                             .build(),
                     )
                     .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                    .addTag("sync_walk_$walkId")
+                    .addTag(WalkWork.syncName(walkId))
                     .build()
         }
     }

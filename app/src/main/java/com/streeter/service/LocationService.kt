@@ -11,8 +11,6 @@ import android.os.PowerManager
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
-import androidx.work.ExistingWorkPolicy
-import androidx.work.WorkManager
 import com.google.android.gms.location.*
 import com.streeter.MainActivity
 import com.streeter.R
@@ -26,7 +24,7 @@ import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.WalkRepository
-import com.streeter.work.MapMatchingWorker
+import com.streeter.domain.work.WalkWorkScheduler
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,7 +56,7 @@ class LocationService : LifecycleService() {
 
     @Inject lateinit var routingEngine: RoutingEngine
 
-    private val workManager by lazy { WorkManager.getInstance(applicationContext) }
+    @Inject lateinit var walkWorkScheduler: WalkWorkScheduler
 
     private val binder = LocalBinder()
     private var fusedClient: FusedLocationProviderClient? = null
@@ -241,12 +239,9 @@ class LocationService : LifecycleService() {
                     lastError = null,
                 ),
             )
-            workManager.enqueueUniqueWork(
-                "match_$walkId",
-                ExistingWorkPolicy.KEEP,
-                MapMatchingWorker.buildRequest(walkId),
-            )
-            Timber.w("Walk stopped: id=%d → PENDING_MATCH, worker enqueued", walkId)
+            // New walk: Sync (durability) and Calculation (coverage) run in parallel.
+            walkWorkScheduler.enqueueNewWalkProcessing(walkId)
+            Timber.w("Walk stopped: id=%d → PENDING_MATCH, sync + calculation enqueued", walkId)
             currentWalkId = -1L
             isRecording.value = false
             _isPaused.value = false

@@ -3,7 +3,6 @@ package com.streeter.ui.detail
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.ExistingWorkPolicy
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import com.streeter.domain.engine.RoutingEngine
@@ -12,8 +11,10 @@ import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkCalculationFinalizer
+import com.streeter.domain.work.WalkWork
+import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.work.MapMatchingWorker
-import com.streeter.work.SyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +48,8 @@ class WalkDetailViewModel
         private val gpsPointRepository: GpsPointRepository,
         private val pendingMatchJobRepository: PendingMatchJobRepository,
         private val workManager: WorkManager,
+        private val walkWorkScheduler: WalkWorkScheduler,
+        private val finalizer: WalkCalculationFinalizer,
         private val routingEngine: RoutingEngine,
     ) : ViewModel() {
         private val walkId: Long = checkNotNull(savedStateHandle["walkId"])
@@ -98,17 +101,14 @@ class WalkDetailViewModel
                 _uiState.update { it.copy(walk = walk, isLoading = false) }
                 // If the walk is stuck in PENDING_MATCH, re-enqueue the worker.
                 // KEEP policy means this is a no-op if the worker is already queued or running.
+                // A stopped walk is COMPLETED, so it never reaches this branch — stopping
+                // therefore survives a detail-screen reopen (issue #15).
                 if (walk?.status == WalkStatus.PENDING_MATCH) {
-                    Timber.w("Walk $walkId is PENDING_MATCH on load — ensuring worker is enqueued")
-                    // REPLACE, not KEEP: if existing work is stuck in backoff (ENQUEUED state),
-                    // KEEP silently ignores the new request and nothing runs. REPLACE cancels
-                    // any queued/running instance and starts fresh, which is correct here because
-                    // we only reach this path when the walk is visibly stuck in PENDING_MATCH.
-                    workManager.enqueueUniqueWork(
-                        "match_$walkId",
-                        ExistingWorkPolicy.REPLACE,
-                        MapMatchingWorker.buildRequest(walkId),
-                    )
+                    Timber.w("Walk $walkId is PENDING_MATCH on load — ensuring Calculation is enqueued")
+                    // enqueueCalculation uses REPLACE: if existing work is stuck in backoff
+                    // (ENQUEUED state), KEEP would silently ignore it and nothing runs. REPLACE
+                    // restarts it, which is correct since we only get here when visibly stuck.
+                    walkWorkScheduler.enqueueCalculation(walkId)
                 }
             }
             // Live observation so the UI reacts when the worker completes the walk
@@ -126,7 +126,7 @@ class WalkDetailViewModel
 
         private fun observeWorkerProgress() {
             viewModelScope.launch {
-                workManager.getWorkInfosForUniqueWorkFlow("match_$walkId").collect { infos ->
+                workManager.getWorkInfosForUniqueWorkFlow(WalkWork.calculationName(walkId)).collect { infos ->
                     val info = infos.firstOrNull()
                     if (info != null && !info.state.isFinished) {
                         val progress = info.progress.getInt(MapMatchingWorker.KEY_PROGRESS, 0)
@@ -159,7 +159,7 @@ class WalkDetailViewModel
         fun deleteWalk() {
             viewModelScope.launch {
                 try {
-                    workManager.cancelUniqueWork("match_$walkId")
+                    walkWorkScheduler.cancelCalculation(walkId)
                     pendingMatchJobRepository.deleteJobForWalk(walkId)
                     walkRepository.deleteWalk(walkId)
                     _uiState.update { it.copy(isDeleted = true, showDeleteConfirm = false) }
@@ -180,11 +180,7 @@ class WalkDetailViewModel
             viewModelScope.launch {
                 try {
                     walkRepository.updateWalk(walk.copy(status = WalkStatus.PENDING_MATCH))
-                    workManager.enqueueUniqueWork(
-                        "match_$walkId",
-                        ExistingWorkPolicy.REPLACE,
-                        MapMatchingWorker.buildRequest(walkId),
-                    )
+                    walkWorkScheduler.enqueueCalculation(walkId)
                 } catch (e: Exception) {
                     Timber.e(e, "Recalculate failed for walk=$walkId")
                     _uiState.update { it.copy(errorMessage = "Recalculation failed. Please try again.") }
@@ -192,9 +188,25 @@ class WalkDetailViewModel
             }
         }
 
+        /**
+         * Stop a running Calculation: cancel the worker, mark the job DONE, and land the
+         * walk in COMPLETED without coverage. Sync is unaffected; the walk can be
+         * recalculated later via [recalculateRoute] (issue #15).
+         */
+        fun stopCalculation() {
+            viewModelScope.launch {
+                try {
+                    finalizer.stop(walkId)
+                } catch (e: Exception) {
+                    Timber.e(e, "Stop failed for walk=$walkId")
+                    _uiState.update { it.copy(errorMessage = "Stop failed. Please try again.") }
+                }
+            }
+        }
+
         private fun observeSyncWorkerState() {
             viewModelScope.launch {
-                workManager.getWorkInfosForUniqueWorkFlow("sync_$walkId").collect { infos ->
+                workManager.getWorkInfosForUniqueWorkFlow(WalkWork.syncName(walkId)).collect { infos ->
                     val info = infos.firstOrNull()
                     val isSyncing =
                         info != null &&
@@ -207,11 +219,7 @@ class WalkDetailViewModel
         fun syncWalk() {
             viewModelScope.launch {
                 try {
-                    workManager.enqueueUniqueWork(
-                        "sync_$walkId",
-                        ExistingWorkPolicy.REPLACE,
-                        SyncWorker.buildRequest(walkId),
-                    )
+                    walkWorkScheduler.enqueueSync(walkId)
                 } catch (e: Exception) {
                     Timber.e(e, "Sync enqueue failed for walk=$walkId")
                     _uiState.update { it.copy(errorMessage = "Sync failed. Please try again.") }

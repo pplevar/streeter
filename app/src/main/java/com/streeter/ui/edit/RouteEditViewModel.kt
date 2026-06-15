@@ -3,13 +3,12 @@ package com.streeter.ui.edit
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.WorkManager
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.EditOperationRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
-import com.streeter.work.MapMatchingWorker
+import com.streeter.domain.work.WalkWorkScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -53,7 +52,7 @@ class RouteEditViewModel
         private val routeSegmentRepository: RouteSegmentRepository,
         private val editOperationRepository: EditOperationRepository,
         private val routingEngine: RoutingEngine,
-        private val workManager: WorkManager,
+        private val walkWorkScheduler: WalkWorkScheduler,
     ) : ViewModel() {
         private val walkId: Long = checkNotNull(savedStateHandle["walkId"])
 
@@ -340,7 +339,9 @@ class RouteEditViewModel
                             ),
                         )
                     }
-                    workManager.enqueue(MapMatchingWorker.buildRequest(walkId))
+                    // Route edit: recompute coverage only. No upfront Sync — the walk is
+                    // already durable; completeWalk() re-syncs the matched distance afterward.
+                    walkWorkScheduler.enqueueCalculation(walkId)
 
                     _uiState.update { it.copy(isSaved = true) }
                 } catch (e: Exception) {

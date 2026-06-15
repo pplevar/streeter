@@ -2,13 +2,12 @@ package com.streeter.ui.manual
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.WorkManager
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
-import com.streeter.work.MapMatchingWorker
+import com.streeter.domain.work.WalkWorkScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -59,7 +58,7 @@ class ManualCreateViewModel
         private val routeSegmentRepository: RouteSegmentRepository,
         private val gpsPointRepository: GpsPointRepository,
         private val routingEngine: RoutingEngine,
-        private val workManager: WorkManager,
+        private val walkWorkScheduler: WalkWorkScheduler,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(ManualCreateUiState())
         val uiState: StateFlow<ManualCreateUiState> = _uiState.asStateFlow()
@@ -250,7 +249,8 @@ class ManualCreateViewModel
                         ),
                     )
 
-                    workManager.enqueue(MapMatchingWorker.buildRequest(walkId))
+                    // New walk: Sync (durability) and Calculation (coverage) run in parallel.
+                    walkWorkScheduler.enqueueNewWalkProcessing(walkId)
 
                     _uiState.update {
                         it.copy(
