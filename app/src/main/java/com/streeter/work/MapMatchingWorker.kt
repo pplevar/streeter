@@ -3,18 +3,17 @@ package com.streeter.work
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.*
-import androidx.work.WorkManager
 import com.streeter.data.engine.StreetCoverageEngine
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.JobStatus
 import com.streeter.domain.model.RouteSegment
-import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkCalculationFinalizer
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
@@ -40,7 +39,7 @@ class MapMatchingWorker
         private val pendingMatchJobRepository: PendingMatchJobRepository,
         private val routingEngine: RoutingEngine,
         private val coverageEngine: StreetCoverageEngine,
-        private val workManager: WorkManager,
+        private val finalizer: WalkCalculationFinalizer,
     ) : CoroutineWorker(context, workerParams) {
         companion object {
             const val KEY_WALK_ID = "walk_id"
@@ -98,7 +97,7 @@ class MapMatchingWorker
 
                             if (points.size < 2) {
                                 Timber.w("Not enough GPS points for walk=$walkId, completing without coverage")
-                                completeWalk(walkId)
+                                finalizer.complete(walkId)
                                 return@withContext Result.success()
                             }
 
@@ -123,7 +122,7 @@ class MapMatchingWorker
                                     walkId,
                                     matchResult.exceptionOrNull()?.message,
                                 )
-                                completeWalk(walkId)
+                                finalizer.complete(walkId)
                                 return@withContext Result.success()
                             }
                             setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Route matched…"))
@@ -145,7 +144,7 @@ class MapMatchingWorker
                             val segments = routeSegmentRepository.getSegmentsForWalk(walkId)
                             if (segments.isEmpty()) {
                                 Timber.w("No segments for manual walk=$walkId, completing without coverage")
-                                completeWalk(walkId)
+                                finalizer.complete(walkId)
                                 return@withContext Result.success()
                             }
                             setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Route segments loaded…"))
@@ -164,7 +163,7 @@ class MapMatchingWorker
                     )
 
                     setProgress(workDataOf(KEY_PROGRESS to 95, KEY_STEP to "Finalizing…"))
-                    completeWalk(walkId, matchedDistanceM.takeIf { it > 0.0 })
+                    finalizer.complete(walkId, matchedDistanceM.takeIf { it > 0.0 })
                     pendingMatchJobRepository.getJobForWalk(walkId)?.let {
                         pendingMatchJobRepository.updateJob(it.copy(status = JobStatus.DONE))
                     }
@@ -173,7 +172,7 @@ class MapMatchingWorker
                     Result.success()
                 } catch (e: java.io.FileNotFoundException) {
                     Timber.w("MapMatchingWorker: engine assets missing for walk=$walkId, completing without coverage")
-                    completeWalk(walkId)
+                    finalizer.complete(walkId)
                     pendingMatchJobRepository.getJobForWalk(walkId)?.let {
                         pendingMatchJobRepository.updateJob(
                             it.copy(status = JobStatus.DONE, lastError = "No map assets: ${e.message}"),
@@ -201,26 +200,6 @@ class MapMatchingWorker
                     if (retries >= 3) Result.failure() else Result.retry()
                 }
             }
-
-        private suspend fun completeWalk(
-            walkId: Long,
-            distanceM: Double? = null,
-        ) {
-            val walk = walkRepository.getWalkById(walkId) ?: return
-            walkRepository.updateWalk(
-                walk.copy(
-                    status = WalkStatus.COMPLETED,
-                    distanceM = distanceM ?: walk.distanceM,
-                    updatedAt = System.currentTimeMillis(),
-                ),
-            )
-            if (walk.serverWalkId == null) {
-                walkRepository.updateSyncStatus(walkId, SyncStatus.PENDING_SYNC, null)
-                workManager.enqueue(SyncWorker.buildRequest(walkId))
-            } else {
-                walkRepository.updateSyncStatus(walkId, SyncStatus.SYNCED, walk.serverWalkId)
-            }
-        }
 
         private fun geometryDistanceM(geometryJson: String): Double {
             return try {

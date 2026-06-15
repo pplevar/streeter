@@ -2,8 +2,6 @@ package com.streeter.data.repository
 
 import android.content.Context
 import androidx.core.content.edit
-import androidx.work.ExistingWorkPolicy
-import androidx.work.WorkManager
 import com.streeter.data.remote.api.StreeterApiService
 import com.streeter.data.remote.dto.GpsPointDto
 import com.streeter.data.remote.dto.GpsTraceSyncRequest
@@ -15,7 +13,7 @@ import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RemoteSyncRepository
 import com.streeter.domain.repository.WalkRepository
-import com.streeter.work.MapMatchingWorker
+import com.streeter.domain.work.WalkWorkScheduler
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
@@ -28,6 +26,7 @@ class RemoteSyncRepositoryImpl
         private val apiService: StreeterApiService,
         private val walkRepository: WalkRepository,
         private val gpsPointRepository: GpsPointRepository,
+        private val walkWorkScheduler: WalkWorkScheduler,
         @ApplicationContext private val context: Context,
     ) : RemoteSyncRepository {
         override suspend fun syncWalk(walkId: Long): Result<Unit> =
@@ -60,7 +59,6 @@ class RemoteSyncRepositoryImpl
                 val pageSize = 100
                 var offset = 0
                 var lastSyncedAt = since
-                val workManager = WorkManager.getInstance(context)
 
                 while (true) {
                     val page = apiService.getWalks(since, pageSize, offset)
@@ -86,11 +84,9 @@ class RemoteSyncRepositoryImpl
                             )
                             walkRepository.updateGpsTraceSyncedAt(localWalk.id, trace.updatedAt)
                             walkRepository.updateWalk(localWalk.copy(status = WalkStatus.PENDING_MATCH))
-                            workManager.enqueueUniqueWork(
-                                "match_${localWalk.id}",
-                                ExistingWorkPolicy.REPLACE,
-                                MapMatchingWorker.buildRequest(localWalk.id),
-                            )
+                            // Pulled trace changed: recompute coverage. No upfront Sync — the
+                            // pulled walk is already durable on the server.
+                            walkWorkScheduler.enqueueCalculation(localWalk.id)
                         }
                     }
 
