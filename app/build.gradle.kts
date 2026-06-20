@@ -145,5 +145,6 @@ dependencies {
 
     // Test
     testImplementation(libs.junit)
+    testImplementation(libs.ktor.client.mock)
     androidTestImplementation(libs.junit.android)
 }

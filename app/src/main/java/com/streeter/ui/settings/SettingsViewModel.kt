@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streeter.data.remote.auth.SyncAuthTokenStore
 import com.streeter.domain.engine.RoutingEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -18,6 +19,7 @@ import javax.inject.Inject
 data class SettingsUiState(
     val gpsIntervalSeconds: Int = 20,
     val maxSpeedKmh: Int = 50,
+    val syncAuthToken: String = "",
     val isRefreshingMapData: Boolean = false,
     val refreshMapDataError: String? = null,
     val showClearDataConfirm: Boolean = false,
@@ -29,6 +31,7 @@ class SettingsViewModel
     constructor(
         @ApplicationContext private val context: Context,
         private val routingEngine: RoutingEngine,
+        private val syncAuthTokenStore: SyncAuthTokenStore,
     ) : ViewModel() {
         private val prefs: SharedPreferences =
             context.getSharedPreferences("streeter_settings", Context.MODE_PRIVATE)
@@ -38,6 +41,7 @@ class SettingsViewModel
                 SettingsUiState(
                     gpsIntervalSeconds = prefs.getInt(KEY_GPS_INTERVAL, 20),
                     maxSpeedKmh = prefs.getInt(KEY_MAX_SPEED, 50),
+                    syncAuthToken = syncAuthTokenStore.token,
                 ),
             )
         val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
@@ -50,6 +54,11 @@ class SettingsViewModel
         fun setMaxSpeed(kmh: Int) {
             prefs.edit().putInt(KEY_MAX_SPEED, kmh).apply()
             _uiState.update { it.copy(maxSpeedKmh = kmh) }
+        }
+
+        fun setSyncAuthToken(token: String) {
+            syncAuthTokenStore.token = token
+            _uiState.update { it.copy(syncAuthToken = token) }
         }
 
         fun refreshMapData() {
