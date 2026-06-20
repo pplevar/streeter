@@ -2,4 +2,6 @@
 <full-backup-content>
     <!-- Back up walks metadata and coverage; exclude large GPS point data -->
     <exclude domain="database" path="streeter_database" />
+    <!-- Sync auth bearer token is device-local; never back it up (issue #17, ADR-0002) -->
+    <exclude domain="sharedpref" path="streeter_sync_auth.xml" />
 </full-backup-content>

@@ -2,6 +2,8 @@
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="database" path="streeter_database" />
+        <!-- Sync auth bearer token is device-local; never upload it (issue #17, ADR-0002) -->
+        <exclude domain="sharedpref" path="streeter_sync_auth.xml" />
     </cloud-backup>
     <device-transfer>
         <include domain="database" path="streeter_database" />
