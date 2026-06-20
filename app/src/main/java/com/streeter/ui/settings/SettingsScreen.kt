@@ -9,7 +9,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Map
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -263,43 +262,6 @@ fun SettingsScreen(
                         ),
                 ) {
                     Text("Clear", fontSize = 13.sp)
-                }
-            }
-
-            // Privacy footer
-            Spacer(Modifier.height(28.dp))
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(20.dp))
-                        .background(MaterialTheme.colorScheme.primaryContainer)
-                        .padding(horizontal = 20.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    Icons.Outlined.Lock,
-                    contentDescription = null,
-                    modifier =
-                        Modifier
-                            .padding(top = 2.dp)
-                            .size(20.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                )
-                Column {
-                    Text(
-                        text = "On-device only",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        text = "GPS, route matching, and coverage run locally. Nothing is sent to any server.",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                        lineHeight = 17.sp,
-                    )
                 }
             }
         }
