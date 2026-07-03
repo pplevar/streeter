@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streeter.data.remote.auth.SyncAuthStatus
 import com.streeter.data.remote.auth.SyncAuthTokenStore
 import com.streeter.domain.engine.RoutingEngine
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,6 +21,7 @@ data class SettingsUiState(
     val gpsIntervalSeconds: Int = 20,
     val maxSpeedKmh: Int = 50,
     val syncAuthToken: String = "",
+    val syncAuthFailed: Boolean = false,
     val isRefreshingMapData: Boolean = false,
     val refreshMapDataError: String? = null,
     val showClearDataConfirm: Boolean = false,
@@ -32,6 +34,7 @@ class SettingsViewModel
         @ApplicationContext private val context: Context,
         private val routingEngine: RoutingEngine,
         private val syncAuthTokenStore: SyncAuthTokenStore,
+        private val syncAuthStatus: SyncAuthStatus,
     ) : ViewModel() {
         private val prefs: SharedPreferences =
             context.getSharedPreferences("streeter_settings", Context.MODE_PRIVATE)
@@ -46,6 +49,14 @@ class SettingsViewModel
             )
         val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
+        init {
+            viewModelScope.launch {
+                syncAuthStatus.authFailed.collect { failed ->
+                    _uiState.update { it.copy(syncAuthFailed = failed) }
+                }
+            }
+        }
+
         fun setGpsInterval(seconds: Int) {
             prefs.edit().putInt(KEY_GPS_INTERVAL, seconds).apply()
             _uiState.update { it.copy(gpsIntervalSeconds = seconds) }
@@ -58,6 +69,9 @@ class SettingsViewModel
 
         fun setSyncAuthToken(token: String) {
             syncAuthTokenStore.token = token
+            // Editing the token is the user acting on the auth-failure prompt: clear it so the banner
+            // dismisses and the next sync attempt re-raises it only if the new token is still rejected.
+            syncAuthStatus.clearAuthFailure()
             _uiState.update { it.copy(syncAuthToken = token) }
         }
 

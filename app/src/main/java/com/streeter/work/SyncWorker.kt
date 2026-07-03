@@ -30,6 +30,7 @@ class SyncWorker
         private val remoteSyncRepository: RemoteSyncRepository,
         private val walkRepository: WalkRepository,
         private val workManager: WorkManager,
+        private val syncFailureHandler: SyncFailureHandler,
     ) : CoroutineWorker(context, params) {
         override suspend fun doWork(): Result {
             val walkId = inputData.getLong(KEY_WALK_ID, -1L)
@@ -37,6 +38,7 @@ class SyncWorker
 
             return remoteSyncRepository.syncWalk(walkId).fold(
                 onSuccess = {
+                    syncFailureHandler.onSuccess()
                     workManager.enqueueUniqueWork(
                         PullSyncWorker.UNIQUE_WORK_NAME,
                         ExistingWorkPolicy.KEEP,
@@ -47,14 +49,13 @@ class SyncWorker
                 onFailure = { throwable ->
                     Timber.w(throwable, "Sync failed for walk $walkId, attempt $runAttemptCount")
                     walkRepository.updateSyncStatus(walkId, SyncStatus.SYNC_FAILED, null)
-                    if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.failure()
+                    if (syncFailureHandler.onFailure(throwable, runAttemptCount)) Result.retry() else Result.failure()
                 },
             )
         }
 
         companion object {
             const val KEY_WALK_ID = "walk_id"
-            private const val MAX_RETRIES = 3
 
             fun buildRequest(walkId: Long): OneTimeWorkRequest =
                 OneTimeWorkRequestBuilder<SyncWorker>()
