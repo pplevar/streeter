@@ -16,6 +16,13 @@ _Avoid_: track, path.
 Pushing a walk's metadata and GPS Trace to the server (and pulling other devices' walks back). Sync is the mechanism that makes a walk durable and shareable across devices. The server is authoritative **only** for metadata and the GPS Trace — never for anything derived.
 _Avoid_: upload, backup.
 
+**Deletion**:
+Removing a Walk, modeled as a **Tombstone**: the walk is marked deleted and that mark propagates by Sync like any other metadata change, so every device converges on the deletion. The server keeps the tombstoned walk's metadata but discards its GPS Trace; each device drops the walk from its lists and its local Calculation. A walk that was never synced has no server presence and is simply removed locally.
+_Avoid_: purge, remove, archive.
+
+**Tombstone**:
+The deleted marker on a Walk that survives Sync so peers can learn a walk is gone. Necessary because pull is an add/update feed with no way to signal absence — a walk cannot simply vanish, it must carry a deleted mark.
+
 **Calculation**:
 The local, derived work that turns a walk into street coverage: **Map Matching** followed by **Coverage** computation. It is per-device and reproducible — it is never synchronized; each device recomputes it from the synced GPS Trace. This is the slow step.
 _Avoid_: processing (overloaded — it has historically meant both Calculation and Sync; do not use it for either).
