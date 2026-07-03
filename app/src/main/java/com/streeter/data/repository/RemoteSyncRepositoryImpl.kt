@@ -100,6 +100,19 @@ class RemoteSyncRepositoryImpl
                 }
             }
 
+        override suspend fun deleteWalk(walkId: Long): Result<Unit> =
+            runCatching {
+                // Already hard-deleted (e.g. a pull converged the tombstone first): nothing to do.
+                val walk = walkRepository.getWalkById(walkId) ?: return@runCatching
+                // Never synced walks are hard-deleted locally without ever reaching this path; guard anyway.
+                val serverWalkId = walk.serverWalkId ?: return@runCatching
+
+                val confirmed = apiService.deleteWalk(serverWalkId)
+                check(confirmed) { "Server rejected delete for walk $walkId (serverWalkId=$serverWalkId)" }
+
+                walkRepository.hardDeleteWalk(walkId)
+            }
+
         private fun getOrCreateClientId(): String {
             val prefs = context.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
             return prefs.getString("client_id", null) ?: UUID.randomUUID().toString().also {

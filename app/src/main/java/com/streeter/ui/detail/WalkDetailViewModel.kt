@@ -8,10 +8,10 @@ import androidx.work.WorkManager
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.GpsPointRepository
-import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.domain.work.WalkCalculationFinalizer
+import com.streeter.domain.work.WalkDeleter
 import com.streeter.domain.work.WalkWork
 import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.work.MapMatchingWorker
@@ -46,9 +46,9 @@ class WalkDetailViewModel
         private val walkRepository: WalkRepository,
         private val routeSegmentRepository: RouteSegmentRepository,
         private val gpsPointRepository: GpsPointRepository,
-        private val pendingMatchJobRepository: PendingMatchJobRepository,
         private val workManager: WorkManager,
         private val walkWorkScheduler: WalkWorkScheduler,
+        private val walkDeleter: WalkDeleter,
         private val finalizer: WalkCalculationFinalizer,
         private val routingEngine: RoutingEngine,
     ) : ViewModel() {
@@ -159,9 +159,7 @@ class WalkDetailViewModel
         fun deleteWalk() {
             viewModelScope.launch {
                 try {
-                    walkWorkScheduler.cancelCalculation(walkId)
-                    pendingMatchJobRepository.deleteJobForWalk(walkId)
-                    walkRepository.deleteWalk(walkId)
+                    walkDeleter.delete(walkId)
                     _uiState.update { it.copy(isDeleted = true, showDeleteConfirm = false) }
                 } catch (e: Exception) {
                     Timber.e(e, "Delete failed for walk=$walkId")

@@ -40,7 +40,9 @@ class WalkRepositoryImpl
             )
         }
 
-        override suspend fun deleteWalk(id: Long) = walkDao.softDelete(id)
+        override suspend fun markWalkDeleted(id: Long) = walkDao.softDelete(id)
+
+        override suspend fun hardDeleteWalk(id: Long) = walkDao.hardDelete(id)
 
         override suspend fun getActiveRecordingWalk(): Walk? = walkDao.getActiveRecording()?.toDomain()
 
@@ -61,8 +63,15 @@ class WalkRepositoryImpl
 
         override suspend fun upsertFromRemote(dto: WalkSyncDto) {
             val existing = walkDao.getWalkByServerWalkId(dto.serverWalkId)
+            if (dto.status == "DELETED") {
+                // Tombstone: deletion is terminal and wins over any concurrent local edit (ADR-0003).
+                // Converge by hard-deleting the local copy (Room CASCADE drops its Coverage); a walk we
+                // never held stays absent — a tombstone is never resurrected into a live row.
+                if (existing != null) walkDao.hardDelete(existing.id)
+                return
+            }
             if (existing == null) {
-                if (dto.status != "DELETED") walkDao.insert(dto.toNewEntity())
+                walkDao.insert(dto.toNewEntity())
             } else if (dto.updatedAt > existing.updatedAt) {
                 walkDao.update(
                     id = existing.id,

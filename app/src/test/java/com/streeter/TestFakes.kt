@@ -14,6 +14,7 @@ import com.streeter.domain.model.StreetWalkEntry
 import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkSectionCoverage
+import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.model.WalkStreetCoverage
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.StreetRepository
@@ -153,7 +154,11 @@ internal class FakeWalkRepository(
         return walk.id
     }
 
-    override suspend fun deleteWalk(id: Long) {
+    override suspend fun markWalkDeleted(id: Long) {
+        store[id]?.let { store[id] = it.copy(status = WalkStatus.DELETED) }
+    }
+
+    override suspend fun hardDeleteWalk(id: Long) {
         store.remove(id)
     }
 
@@ -214,6 +219,7 @@ internal class FakeWalkWorkScheduler : WalkWorkScheduler {
     val calculationEnqueued = mutableListOf<Long>()
     val calculationCancelled = mutableListOf<Long>()
     val syncEnqueued = mutableListOf<Long>()
+    val deleteEnqueued = mutableListOf<Long>()
 
     override fun enqueueNewWalkProcessing(walkId: Long) {
         newWalkProcessing += walkId
@@ -229,6 +235,10 @@ internal class FakeWalkWorkScheduler : WalkWorkScheduler {
 
     override fun enqueueSync(walkId: Long) {
         syncEnqueued += walkId
+    }
+
+    override fun enqueueDelete(walkId: Long) {
+        deleteEnqueued += walkId
     }
 }
 

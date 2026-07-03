@@ -18,4 +18,9 @@ class WalkWorkTest {
     fun `sync work is named sync underscore walkId`() {
         assertEquals("sync_42", WalkWork.syncName(42L))
     }
+
+    @Test
+    fun `delete work is named delete underscore walkId`() {
+        assertEquals("delete_42", WalkWork.deleteName(42L))
+    }
 }
