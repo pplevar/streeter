@@ -3,6 +3,7 @@ package com.streeter.di
 import com.streeter.BuildConfig
 import com.streeter.data.remote.api.StreeterApiService
 import com.streeter.data.remote.auth.SyncAuthTokenStore
+import com.streeter.domain.sync.SyncAuthException
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -10,12 +11,14 @@ import dagger.hilt.components.SingletonComponent
 import io.ktor.client.HttpClient
 import io.ktor.client.HttpClientConfig
 import io.ktor.client.engine.android.Android
+import io.ktor.client.plugins.HttpResponseValidator
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.plugins.logging.LogLevel
 import io.ktor.client.plugins.logging.Logging
 import io.ktor.client.request.header
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import javax.inject.Singleton
@@ -42,6 +45,14 @@ fun HttpClientConfig<*>.configureStreeterClient(
         val token = tokenProvider()
         if (token.isNotBlank()) {
             header(HttpHeaders.Authorization, "Bearer $token")
+        }
+    }
+    // A 401 is a non-transient auth failure — surface it as a typed exception so the sync path can
+    // fail fast (no backoff retries) and tell the user to fix their token (issue #19). Other statuses
+    // keep their existing handling so a transient 5xx is not mistaken for a bad token.
+    HttpResponseValidator {
+        validateResponse { response ->
+            if (response.status == HttpStatusCode.Unauthorized) throw SyncAuthException()
         }
     }
 }

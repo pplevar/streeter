@@ -30,23 +30,26 @@ class DeleteSyncWorker
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         private val remoteSyncRepository: RemoteSyncRepository,
+        private val syncFailureHandler: SyncFailureHandler,
     ) : CoroutineWorker(context, params) {
         override suspend fun doWork(): Result {
             val walkId = inputData.getLong(KEY_WALK_ID, -1L)
             if (walkId == -1L) return Result.failure()
 
             return remoteSyncRepository.deleteWalk(walkId).fold(
-                onSuccess = { Result.success() },
+                onSuccess = {
+                    syncFailureHandler.onSuccess()
+                    Result.success()
+                },
                 onFailure = { throwable ->
                     Timber.w(throwable, "Delete dispatch failed for walk $walkId, attempt $runAttemptCount")
-                    if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.failure()
+                    if (syncFailureHandler.onFailure(throwable, runAttemptCount)) Result.retry() else Result.failure()
                 },
             )
         }
 
         companion object {
             const val KEY_WALK_ID = "walk_id"
-            private const val MAX_RETRIES = 3
 
             fun buildRequest(walkId: Long): OneTimeWorkRequest =
                 OneTimeWorkRequestBuilder<DeleteSyncWorker>()

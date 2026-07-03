@@ -24,22 +24,25 @@ class PullSyncWorker
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         private val remoteSyncRepository: RemoteSyncRepository,
+        private val syncFailureHandler: SyncFailureHandler,
     ) : CoroutineWorker(context, params) {
         override suspend fun doWork(): Result {
             val prefs = applicationContext.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
             val since = prefs.getLong("last_pull_sync_at", 0L)
 
             return remoteSyncRepository.pullWalks(since).fold(
-                onSuccess = { Result.success() },
+                onSuccess = {
+                    syncFailureHandler.onSuccess()
+                    Result.success()
+                },
                 onFailure = { throwable ->
                     Timber.w(throwable, "Pull sync failed, attempt $runAttemptCount")
-                    if (runAttemptCount < MAX_RETRIES) Result.retry() else Result.failure()
+                    if (syncFailureHandler.onFailure(throwable, runAttemptCount)) Result.retry() else Result.failure()
                 },
             )
         }
 
         companion object {
-            private const val MAX_RETRIES = 3
             const val UNIQUE_WORK_NAME = "pull_sync"
 
             fun buildOneTimeRequest(): OneTimeWorkRequest =

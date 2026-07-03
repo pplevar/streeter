@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.outlined.Map
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -184,6 +185,9 @@ fun SettingsScreen(
                         .padding(20.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                if (uiState.syncAuthFailed) {
+                    SyncAuthFailedBanner()
+                }
                 Text(
                     text = "Auth token",
                     fontSize = 15.sp,
@@ -264,6 +268,42 @@ fun SettingsScreen(
                     Text("Clear", fontSize = 13.sp)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SyncAuthFailedBanner() {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(MaterialTheme.colorScheme.errorContainer)
+                .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+        Icon(
+            Icons.Outlined.WarningAmber,
+            contentDescription = null,
+            modifier = Modifier.size(20.dp),
+            tint = MaterialTheme.colorScheme.error,
+        )
+        Column {
+            Text(
+                text = "Sync was rejected",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = "The server did not accept your sync token. Set or correct it below to sync.",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.85f),
+                lineHeight = 18.sp,
+            )
         }
     }
 }
