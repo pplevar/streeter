@@ -15,7 +15,11 @@ interface WalkRepository {
 
     suspend fun updateWalk(walk: Walk)
 
-    suspend fun deleteWalk(id: Long)
+    /** Mark a walk as a `DELETED` tombstone, keeping the row (and its `serverWalkId`) for dispatch. */
+    suspend fun markWalkDeleted(id: Long)
+
+    /** Remove a walk's row entirely; Room CASCADE drops its Coverage and GPS trace. */
+    suspend fun hardDeleteWalk(id: Long)
 
     suspend fun getActiveRecordingWalk(): Walk?
 

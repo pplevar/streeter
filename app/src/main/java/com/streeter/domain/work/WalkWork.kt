@@ -13,4 +13,6 @@ object WalkWork {
     fun calculationName(walkId: Long): String = "match_$walkId"
 
     fun syncName(walkId: Long): String = "sync_$walkId"
+
+    fun deleteName(walkId: Long): String = "delete_$walkId"
 }

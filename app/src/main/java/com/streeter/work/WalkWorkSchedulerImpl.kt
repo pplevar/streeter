@@ -46,4 +46,14 @@ class WalkWorkSchedulerImpl
                 SyncWorker.buildRequest(walkId),
             )
         }
+
+        override fun enqueueDelete(walkId: Long) {
+            // KEEP: deletion is terminal and idempotent, so an already-queued delete must not have
+            // its retry backoff reset by a repeat trigger.
+            workManager.enqueueUniqueWork(
+                WalkWork.deleteName(walkId),
+                ExistingWorkPolicy.KEEP,
+                DeleteSyncWorker.buildRequest(walkId),
+            )
+        }
     }

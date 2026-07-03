@@ -29,4 +29,10 @@ interface WalkWorkScheduler {
 
     /** Enqueue Sync only, coalescing to the latest persisted walk state. */
     fun enqueueSync(walkId: Long)
+
+    /**
+     * Dispatch a pending server delete for a tombstoned walk (offline-capable, retrying). Calls
+     * `DELETE /walks/{serverWalkId}` and hard-deletes the local row once the server confirms.
+     */
+    fun enqueueDelete(walkId: Long)
 }
