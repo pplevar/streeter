@@ -30,11 +30,12 @@ fun PrivacyDisclosureScreen(onAccept: () -> Unit) {
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 PrivacySection(
-                    title = "Your data stays on your device",
+                    title = "On-device processing & sync",
                     body =
-                        "Streeter never sends your location or route data to any server. " +
-                            "All GPS recording, map-matching, and street coverage computation " +
-                            "happens entirely on your device.",
+                        "GPS recording, map-matching, and street coverage computation all " +
+                            "happen on your device. Your recorded walks are then synced to the " +
+                            "Streeter server this app is configured to use, so they're backed up " +
+                            "and available across your devices.",
                 )
                 PrivacySection(
                     title = "Background location",
@@ -53,9 +54,9 @@ fun PrivacyDisclosureScreen(onAccept: () -> Unit) {
                 PrivacySection(
                     title = "Exporting data",
                     body =
-                        "The only way data leaves your device is if you explicitly choose " +
+                        "You can export a full copy of your data at any time by choosing " +
                             "\"Export all data\" in Settings. This writes a JSON file to your " +
-                            "Downloads folder — nothing is sent automatically.",
+                            "Downloads folder.",
                 )
             }
 
