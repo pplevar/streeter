@@ -37,8 +37,5 @@ class GpsPointRepositoryImpl
         override suspend fun deletePoint(
             walkId: Long,
             pointId: Long,
-        ): Int {
-            dao.deleteById(pointId)
-            return dao.countForWalk(walkId)
-        }
+        ): Int = dao.deleteByIdAndCountRemaining(walkId, pointId)
     }

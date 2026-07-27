@@ -51,8 +51,11 @@ class GpsPointRepositoryTest {
             store.values.removeAll { it.walkId == walkId }
         }
 
-        override suspend fun deleteById(pointId: Long) {
-            store.remove(pointId)
+        override suspend fun deleteById(
+            walkId: Long,
+            pointId: Long,
+        ) {
+            store[pointId]?.let { if (it.walkId == walkId) store.remove(pointId) }
         }
 
         override suspend fun countForWalk(walkId: Long): Int = store.values.count { it.walkId == walkId }
@@ -90,5 +93,17 @@ class GpsPointRepositoryTest {
             val remaining = GpsPointRepositoryImpl(dao).deletePoint(walkId = 1L, pointId = 3L)
 
             assertEquals(2, remaining)
+        }
+
+    @Test
+    fun `deletePoint does not delete a point belonging to a different walk`() =
+        runBlocking {
+            val dao = FakeGpsPointDao(listOf(point(1L, walkId = 1L), point(2L, walkId = 2L)))
+
+            val remaining = GpsPointRepositoryImpl(dao).deletePoint(walkId = 1L, pointId = 2L)
+
+            // Point 2 belongs to walk 2, so a walk-1 delete request must leave it untouched.
+            assertEquals(point(2L, walkId = 2L), dao.store[2L])
+            assertEquals(1, remaining)
         }
 }
