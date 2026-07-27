@@ -33,4 +33,9 @@ class GpsPointRepositoryImpl
             dao.deleteByWalkId(walkId)
             dao.insertAll(points.map { it.toEntity() })
         }
+
+        override suspend fun deletePoint(
+            walkId: Long,
+            pointId: Long,
+        ): Int = dao.deleteByIdAndCountRemaining(walkId, pointId)
     }

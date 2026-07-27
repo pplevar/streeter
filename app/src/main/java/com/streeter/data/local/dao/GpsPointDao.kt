@@ -20,4 +20,23 @@ interface GpsPointDao {
 
     @Query("DELETE FROM gps_points WHERE walkId = :walkId")
     suspend fun deleteByWalkId(walkId: Long)
+
+    @Query("DELETE FROM gps_points WHERE id = :pointId AND walkId = :walkId")
+    suspend fun deleteById(
+        walkId: Long,
+        pointId: Long,
+    )
+
+    @Query("SELECT COUNT(*) FROM gps_points WHERE walkId = :walkId")
+    suspend fun countForWalk(walkId: Long): Int
+
+    /** Deletes [pointId] and reports the remaining count atomically, so no writer can race between the two. */
+    @Transaction
+    suspend fun deleteByIdAndCountRemaining(
+        walkId: Long,
+        pointId: Long,
+    ): Int {
+        deleteById(walkId, pointId)
+        return countForWalk(walkId)
+    }
 }
