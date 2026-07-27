@@ -16,4 +16,10 @@ interface GpsPointRepository {
         walkId: Long,
         points: List<GpsPoint>,
     )
+
+    /** Deletes [pointId] from [walkId] and returns the walk's remaining point count. */
+    suspend fun deletePoint(
+        walkId: Long,
+        pointId: Long,
+    ): Int
 }
