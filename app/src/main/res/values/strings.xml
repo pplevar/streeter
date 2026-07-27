@@ -16,6 +16,8 @@
     <string name="label_create_manual">Create Manual Walk</string>
     <string name="label_edit_route">Edit Route</string>
     <string name="label_edit_points">Edit GPS Points</string>
+    <string name="label_points_count">%1$d points</string>
+    <string name="label_point_row">Point #%1$d · ±%2$dm</string>
     <string name="label_save">Save</string>
     <string name="label_discard">Discard</string>
     <string name="label_undo">Undo</string>
