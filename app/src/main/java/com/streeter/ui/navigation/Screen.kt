@@ -15,6 +15,10 @@ sealed class Screen(val route: String) {
         fun createRoute(walkId: Long) = "route_edit/$walkId"
     }
 
+    data object EditPoints : Screen("edit_points/{walkId}") {
+        fun createRoute(walkId: Long) = "edit_points/$walkId"
+    }
+
     data object StreetDetail : Screen("street_detail/{streetId}") {
         fun createRoute(streetId: Long) = "street_detail/$streetId"
     }

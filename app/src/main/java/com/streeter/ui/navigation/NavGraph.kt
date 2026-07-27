@@ -9,6 +9,7 @@ import androidx.navigation.navArgument
 import androidx.navigation.navDeepLink
 import com.streeter.ui.detail.WalkDetailScreen
 import com.streeter.ui.edit.RouteEditScreen
+import com.streeter.ui.editpoints.EditPointsScreen
 import com.streeter.ui.history.HistoryScreen
 import com.streeter.ui.home.HomeScreen
 import com.streeter.ui.manual.ManualCreateScreen
@@ -59,9 +60,21 @@ fun StreeterNavGraph(navController: NavHostController) {
                 onEditRoute = { walkId ->
                     navController.navigate(Screen.RouteEdit.createRoute(walkId))
                 },
+                onEditPoints = { walkId ->
+                    navController.navigate(Screen.EditPoints.createRoute(walkId))
+                },
                 onStreetClick = { streetId ->
                     navController.navigate(Screen.StreetDetail.createRoute(streetId))
                 },
+            )
+        }
+
+        composable(
+            route = Screen.EditPoints.route,
+            arguments = listOf(navArgument("walkId") { type = NavType.LongType }),
+        ) {
+            EditPointsScreen(
+                onNavigateBack = { navController.popBackStack() },
             )
         }
 
