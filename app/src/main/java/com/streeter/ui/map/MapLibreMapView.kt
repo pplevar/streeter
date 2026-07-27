@@ -50,6 +50,9 @@ private const val ROUTE_JSON_SOURCE = "route_json_source"
 private const val ROUTE_JSON_LAYER = "route_json_layer"
 private const val PREVIEW_SOURCE = "preview_source"
 private const val PREVIEW_LAYER = "preview_layer"
+private const val SELECTED_POINT_SOURCE = "selected_point_source"
+private const val SELECTED_POINT_HALO_LAYER = "selected_point_halo_layer"
+private const val SELECTED_POINT_LAYER = "selected_point_layer"
 
 @Suppress("DEPRECATION") // LocalLifecycleOwner: lifecycle-runtime-compose not yet in deps
 @Composable
@@ -59,6 +62,7 @@ fun MapLibreMapView(
     gpsPoints: List<GpsPoint> = emptyList(),
     routeGeometryJson: String? = null,
     previewGeometryJson: String? = null,
+    selectedPoint: GpsPoint? = null,
     followLocation: Boolean = false,
     showCurrentPosition: Boolean = false,
     initialLatLng: LatLng? = null,
@@ -74,6 +78,7 @@ fun MapLibreMapView(
     val latestGpsPoints = rememberUpdatedState(gpsPoints)
     val latestRouteJson = rememberUpdatedState(routeGeometryJson)
     val latestPreviewJson = rememberUpdatedState(previewGeometryJson)
+    val latestSelectedPoint = rememberUpdatedState(selectedPoint)
     val latestFollowLocation = rememberUpdatedState(followLocation)
     val latestOnCameraMove = rememberUpdatedState(onCameraMove)
 
@@ -127,6 +132,7 @@ fun MapLibreMapView(
                         updateRouteLayer(map, latestGpsPoints.value)
                         updateRouteJsonLayer(map, latestRouteJson.value)
                         updatePreviewLayer(map, latestPreviewJson.value)
+                        updateSelectedPointLayer(map, latestSelectedPoint.value)
                         // Center on initial position when no route is loaded yet.
                         if (initialLatLng != null && latestGpsPoints.value.isEmpty()) {
                             map.moveCamera(
@@ -161,6 +167,7 @@ fun MapLibreMapView(
             updateRouteLayer(map, gpsPoints)
             updateRouteJsonLayer(map, routeGeometryJson)
             updatePreviewLayer(map, previewGeometryJson)
+            updateSelectedPointLayer(map, selectedPoint)
             if (showCurrentPosition) {
                 updatePositionLayer(map, gpsPoints)
             }
@@ -217,6 +224,22 @@ private fun setupRouteLayers(style: Style) {
                 lineJoin("round"),
             ),
         )
+        style.addSource(GeoJsonSource(SELECTED_POINT_SOURCE))
+        style.addLayer(
+            CircleLayer(SELECTED_POINT_HALO_LAYER, SELECTED_POINT_SOURCE).withProperties(
+                circleColor("#EF4444"),
+                circleRadius(16f),
+                circleOpacity(0.25f),
+            ),
+        )
+        style.addLayer(
+            CircleLayer(SELECTED_POINT_LAYER, SELECTED_POINT_SOURCE).withProperties(
+                circleColor("#EF4444"),
+                circleRadius(9f),
+                circleStrokeColor("#FFFFFF"),
+                circleStrokeWidth(3f),
+            ),
+        )
     } catch (e: Exception) {
         Timber.e(e, "Failed to set up route layers")
     }
@@ -269,6 +292,20 @@ private fun updatePreviewLayer(
     source.setGeoJson(
         geojson ?: """{"type":"FeatureCollection","features":[]}""",
     )
+}
+
+private fun updateSelectedPointLayer(
+    map: MapLibreMap,
+    point: GpsPoint?,
+) {
+    val style = map.style ?: return
+    val source = style.getSourceAs<GeoJsonSource>(SELECTED_POINT_SOURCE) ?: return
+    if (point == null) {
+        source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
+        return
+    }
+    val geojson = """{"type":"Feature","geometry":{"type":"Point","coordinates":[${point.lng},${point.lat}]},"properties":{}}"""
+    source.setGeoJson(geojson)
 }
 
 fun fitBoundsToGeometryJson(

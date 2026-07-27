@@ -11,6 +11,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EditLocation
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -80,6 +81,7 @@ private fun tierColors(
 fun WalkDetailScreen(
     onNavigateBack: () -> Unit,
     onEditRoute: (Long) -> Unit,
+    onEditPoints: (Long) -> Unit = {},
     onStreetClick: (Long) -> Unit = {},
     viewModel: WalkDetailViewModel = hiltViewModel(),
 ) {
@@ -144,6 +146,13 @@ fun WalkDetailScreen(
                     ) {
                         IconButton(onClick = { onEditRoute(walk.id) }) {
                             Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.label_edit_route))
+                        }
+                    }
+                    if (walk != null &&
+                        (walk.status == WalkStatus.PENDING_MATCH || walk.status == WalkStatus.COMPLETED)
+                    ) {
+                        IconButton(onClick = { onEditPoints(walk.id) }) {
+                            Icon(Icons.Default.EditLocation, contentDescription = stringResource(R.string.label_edit_points))
                         }
                     }
                     IconButton(

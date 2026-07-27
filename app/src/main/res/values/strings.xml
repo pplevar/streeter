@@ -15,6 +15,7 @@
     <string name="label_history">History</string>
     <string name="label_create_manual">Create Manual Walk</string>
     <string name="label_edit_route">Edit Route</string>
+    <string name="label_edit_points">Edit GPS Points</string>
     <string name="label_save">Save</string>
     <string name="label_discard">Discard</string>
     <string name="label_undo">Undo</string>
