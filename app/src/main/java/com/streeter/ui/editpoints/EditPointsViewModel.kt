@@ -13,10 +13,20 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+/** Minimum number of GPS points a walk must retain; swipe-to-delete is blocked at this floor. */
+private const val MIN_POINTS = 2
+
+data class PendingUndo(
+    val point: GpsPoint,
+    val token: Long,
+)
+
 data class EditPointsUiState(
     val points: List<GpsPoint> = emptyList(),
     val selectedPointId: Long? = null,
     val isLoading: Boolean = true,
+    val pendingUndo: PendingUndo? = null,
+    val minPointsMessage: Boolean = false,
 ) {
     val selectedPoint: GpsPoint? get() = points.find { it.id == selectedPointId }
 }
@@ -43,5 +53,42 @@ class EditPointsViewModel
 
         fun selectPoint(pointId: Long) {
             _uiState.update { it.copy(selectedPointId = pointId) }
+        }
+
+        private var undoToken = 0L
+
+        /** Swipe-deletes [point], unless doing so would drop the walk below [MIN_POINTS]. */
+        fun deletePoint(point: GpsPoint) {
+            if (_uiState.value.points.size <= MIN_POINTS) {
+                _uiState.update { it.copy(minPointsMessage = true) }
+                return
+            }
+            viewModelScope.launch {
+                gpsPointRepository.deletePoint(walkId, point.id)
+                _uiState.update {
+                    it.copy(
+                        selectedPointId = if (it.selectedPointId == point.id) null else it.selectedPointId,
+                        pendingUndo = PendingUndo(point, ++undoToken),
+                    )
+                }
+            }
+        }
+
+        /** Restores the exact point removed by [pendingUndo], if it hasn't already been superseded. */
+        fun undoDelete(pendingUndo: PendingUndo) {
+            viewModelScope.launch {
+                gpsPointRepository.insertPoints(listOf(pendingUndo.point))
+                if (_uiState.value.pendingUndo?.token == pendingUndo.token) {
+                    _uiState.update { it.copy(pendingUndo = null) }
+                }
+            }
+        }
+
+        fun consumePendingUndo() {
+            _uiState.update { it.copy(pendingUndo = null) }
+        }
+
+        fun dismissMinPointsMessage() {
+            _uiState.update { it.copy(minPointsMessage = false) }
         }
     }
