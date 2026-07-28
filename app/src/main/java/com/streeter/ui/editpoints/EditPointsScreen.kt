@@ -21,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -40,7 +41,9 @@ import org.maplibre.android.maps.MapLibreMap
 import kotlin.math.roundToInt
 
 private val SheetPeekHeight = 96.dp
-private val SheetExpandedHeight = 420.dp
+private val SheetExpandedHeightFraction = 0.55f
+private val SheetExpandedHeightMin = 280.dp
+private val SheetExpandedHeightMax = 480.dp
 
 private fun centerOn(
     map: MapLibreMap?,
@@ -68,8 +71,12 @@ fun EditPointsScreen(
     val uiState by viewModel.uiState.collectAsState()
     var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
     val density = LocalDensity.current
+    val configuration = LocalConfiguration.current
+    val sheetExpandedHeight =
+        (configuration.screenHeightDp.dp * SheetExpandedHeightFraction)
+            .coerceIn(SheetExpandedHeightMin, SheetExpandedHeightMax)
     val sheetPeekPx = with(density) { SheetPeekHeight.toPx() }
-    val sheetExpandedPx = with(density) { SheetExpandedHeight.toPx() }
+    val sheetExpandedPx = with(density) { sheetExpandedHeight.toPx() }
     val sheetHeightPx = remember { Animatable(sheetExpandedPx) }
     val scope = rememberCoroutineScope()
     val sheetExpanded = sheetHeightPx.value > (sheetPeekPx + sheetExpandedPx) / 2f
@@ -175,8 +182,7 @@ fun EditPointsScreen(
                     Box(
                         Modifier
                             .align(Alignment.CenterHorizontally)
-                            .width(36.dp)
-                            .height(24.dp)
+                            .size(48.dp)
                             .clickable { snapSheetTo(expanded = !sheetExpanded) }
                             .pointerInput(Unit) {
                                 detectVerticalDragGestures(
@@ -333,12 +339,13 @@ private fun PointRow(
             modifier =
                 Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 48.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(
                         if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
                     )
                     .clickable(onClick = onClick)
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                    .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
