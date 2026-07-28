@@ -130,20 +130,22 @@ class EditPointsViewModel
          * back through map matching and sync so the route, coverage, and remote copy reflect the
          * shorter point set — the same transition [com.streeter.ui.edit.RouteEditViewModel.save]
          * performs after a route edit. No-op if nothing was deleted.
+         *
+         * Suspends rather than firing on [viewModelScope]: the caller navigates away right after
+         * this returns, and that navigation tears down this ViewModel's scope, which would cancel
+         * an in-flight `viewModelScope.launch` before the DB write and enqueue completed.
          */
-        fun onExit() {
+        suspend fun onExit() {
             if (!pointsWereDeleted) return
-            viewModelScope.launch {
-                walkRepository.getWalkById(walkId)?.let { walk ->
-                    walkRepository.updateWalk(
-                        walk.copy(
-                            status = WalkStatus.PENDING_MATCH,
-                            updatedAt = System.currentTimeMillis(),
-                        ),
-                    )
-                }
-                walkWorkScheduler.enqueueCalculation(walkId)
+            walkRepository.getWalkById(walkId)?.let { walk ->
+                walkRepository.updateWalk(
+                    walk.copy(
+                        status = WalkStatus.PENDING_MATCH,
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                )
             }
+            walkWorkScheduler.enqueueCalculation(walkId)
         }
 
         /** Restores the exact point removed by [pendingUndo]. */

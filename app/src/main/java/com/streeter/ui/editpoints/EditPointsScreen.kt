@@ -78,8 +78,10 @@ fun EditPointsScreen(
     val deletedMessage = stringResource(R.string.message_point_deleted)
 
     fun exitEditor() {
-        viewModel.onExit()
-        onNavigateBack()
+        scope.launch {
+            viewModel.onExit()
+            onNavigateBack()
+        }
     }
 
     BackHandler(onBack = ::exitEditor)

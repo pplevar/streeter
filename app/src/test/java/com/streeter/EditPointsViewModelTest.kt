@@ -3,6 +3,7 @@ package com.streeter
 import androidx.lifecycle.SavedStateHandle
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.Walk
+import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.WalkRepository
@@ -105,7 +106,7 @@ class EditPointsViewModelTest {
             durationMs = 0L,
             distanceM = 0.0,
             status = status,
-            source = com.streeter.domain.model.WalkSource.RECORDED,
+            source = WalkSource.RECORDED,
             createdAt = 0L,
             updatedAt = 0L,
         )
