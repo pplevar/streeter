@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -28,6 +29,7 @@ import com.streeter.R
 import com.streeter.domain.model.GpsPoint
 import com.streeter.ui.map.MAP_STYLE_URL
 import com.streeter.ui.map.MapLibreMapView
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
@@ -69,6 +71,9 @@ fun EditPointsScreen(
     val sheetHeightPx = remember { Animatable(sheetExpandedPx) }
     val scope = rememberCoroutineScope()
     val sheetExpanded = sheetHeightPx.value > (sheetPeekPx + sheetExpandedPx) / 2f
+    val snackbarHostState = remember { SnackbarHostState() }
+    val undoLabel = stringResource(R.string.label_undo)
+    val deletedMessage = stringResource(R.string.message_point_deleted)
 
     fun snapSheetTo(expanded: Boolean) {
         scope.launch { sheetHeightPx.animateTo(if (expanded) sheetExpandedPx else sheetPeekPx) }
@@ -78,6 +83,27 @@ fun EditPointsScreen(
         viewModel.selectPoint(point.id)
         snapSheetTo(expanded = false)
         centerOn(mapRef, point, sheetPeekPx)
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.undoEvents.collect { pendingUndo ->
+            val result =
+                snackbarHostState.showSnackbar(
+                    message = deletedMessage,
+                    actionLabel = undoLabel,
+                    duration = SnackbarDuration.Short,
+                )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoDelete(pendingUndo)
+            }
+        }
+    }
+
+    LaunchedEffect(uiState.minPointsMessage) {
+        if (uiState.minPointsMessage) {
+            delay(3000)
+            viewModel.dismissMinPointsMessage()
+        }
     }
 
     Scaffold(
@@ -92,6 +118,7 @@ fun EditPointsScreen(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
             )
         },
+        snackbarHost = { SnackbarHost(snackbarHostState) },
     ) { padding ->
         Box(Modifier.fillMaxSize()) {
             MapLibreMapView(
@@ -157,6 +184,14 @@ fun EditPointsScreen(
                         fontSize = 14.sp,
                     )
                 }
+                if (uiState.minPointsMessage) {
+                    Text(
+                        stringResource(R.string.message_min_points_floor),
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                    )
+                }
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
@@ -168,7 +203,9 @@ fun EditPointsScreen(
                             index = index,
                             point = point,
                             selected = uiState.selectedPointId == point.id,
+                            canDelete = uiState.canDeleteMore,
                             onClick = { selectAndCenter(point) },
+                            onDelete = { viewModel.deletePoint(point) },
                         )
                     }
                 }
@@ -177,40 +214,76 @@ fun EditPointsScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PointRow(
     index: Int,
     point: GpsPoint,
     selected: Boolean,
+    canDelete: Boolean,
     onClick: () -> Unit,
+    onDelete: () -> Unit,
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .background(
-                    if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
-                )
-                .clickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        Box(
-            Modifier
-                .size(20.dp)
-                .clip(CircleShape)
-                .background(MaterialTheme.colorScheme.secondaryContainer),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("${index + 1}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
-        }
-        Text(
-            stringResource(R.string.label_point_row, index + 1, point.accuracyM.roundToInt()),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.weight(1f),
+    val dismissState =
+        rememberSwipeToDismissBoxState(
+            confirmValueChange = { value ->
+                if (value == SwipeToDismissBoxValue.EndToStart) {
+                    onDelete()
+                    canDelete
+                } else {
+                    false
+                }
+            },
         )
+
+    SwipeToDismissBox(
+        state = dismissState,
+        enableDismissFromStartToEnd = false,
+        backgroundContent = {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.errorContainer)
+                    .padding(horizontal = 14.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = stringResource(R.string.label_delete),
+                    tint = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            }
+        },
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
+                    )
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 14.dp, vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Box(
+                Modifier
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.secondaryContainer),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("${index + 1}", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+            Text(
+                stringResource(R.string.label_point_row, index + 1, point.accuracyM.roundToInt()),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f),
+            )
+        }
     }
 }
