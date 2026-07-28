@@ -4,7 +4,10 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
+import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkWorkScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -45,11 +48,16 @@ class EditPointsViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val gpsPointRepository: GpsPointRepository,
+        private val walkRepository: WalkRepository,
+        private val walkWorkScheduler: WalkWorkScheduler,
     ) : ViewModel() {
         private val walkId: Long = checkNotNull(savedStateHandle["walkId"])
 
         private val _uiState = MutableStateFlow(EditPointsUiState())
         val uiState: StateFlow<EditPointsUiState> = _uiState.asStateFlow()
+
+        /** Set once any point is deleted this session; drives the re-match trigger on exit. */
+        private var pointsWereDeleted = false
 
         /**
          * One undo opportunity per delete, queued rather than overwritten, so a rapid second
@@ -110,9 +118,31 @@ class EditPointsViewModel
                     state.selectedPointId
                 }
             _uiState.update { it.copy(selectedPointId = newSelectedId) }
+            pointsWereDeleted = true
             viewModelScope.launch {
                 gpsPointRepository.deletePoint(walkId, point.id)
                 _undoEvents.send(PendingUndo(point))
+            }
+        }
+
+        /**
+         * Called when leaving the editor. If any points were deleted this session, puts the walk
+         * back through map matching and sync so the route, coverage, and remote copy reflect the
+         * shorter point set — the same transition [com.streeter.ui.edit.RouteEditViewModel.save]
+         * performs after a route edit. No-op if nothing was deleted.
+         */
+        fun onExit() {
+            if (!pointsWereDeleted) return
+            viewModelScope.launch {
+                walkRepository.getWalkById(walkId)?.let { walk ->
+                    walkRepository.updateWalk(
+                        walk.copy(
+                            status = WalkStatus.PENDING_MATCH,
+                            updatedAt = System.currentTimeMillis(),
+                        ),
+                    )
+                }
+                walkWorkScheduler.enqueueCalculation(walkId)
             }
         }
 

@@ -2,7 +2,11 @@ package com.streeter
 
 import androidx.lifecycle.SavedStateHandle
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.Walk
+import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
+import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.ui.editpoints.EditPointsViewModel
 import com.streeter.ui.editpoints.PendingUndo
 import kotlinx.coroutines.Dispatchers
@@ -93,9 +97,26 @@ class EditPointsViewModelTest {
         }
     }
 
-    private fun viewModel(points: List<GpsPoint>): EditPointsViewModel {
+    private fun walk(status: WalkStatus = WalkStatus.COMPLETED) =
+        Walk(
+            id = 1L,
+            title = "Test walk",
+            date = 0L,
+            durationMs = 0L,
+            distanceM = 0.0,
+            status = status,
+            source = com.streeter.domain.model.WalkSource.RECORDED,
+            createdAt = 0L,
+            updatedAt = 0L,
+        )
+
+    private fun viewModel(
+        points: List<GpsPoint>,
+        walkRepository: WalkRepository = FakeWalkRepository(listOf(walk())),
+        walkWorkScheduler: FakeWalkWorkScheduler = FakeWalkWorkScheduler(),
+    ): EditPointsViewModel {
         val savedStateHandle = SavedStateHandle(mapOf("walkId" to 1L))
-        return EditPointsViewModel(savedStateHandle, FakeGpsPointRepository(points))
+        return EditPointsViewModel(savedStateHandle, FakeGpsPointRepository(points), walkRepository, walkWorkScheduler)
     }
 
     /** Collects [EditPointsViewModel.undoEvents] into a list for assertions, as the screen would via `collect`. */
@@ -342,6 +363,38 @@ class EditPointsViewModelTest {
             dispatcher.scheduler.advanceUntilIdle()
 
             assertFalse(vm.uiState.value.canDeleteMore)
+        }
+
+    @Test
+    fun `leaving the editor with zero deletions does not change walk status or enqueue anything`() =
+        runTest {
+            val walkRepository = FakeWalkRepository(listOf(walk(status = WalkStatus.COMPLETED)))
+            val scheduler = FakeWalkWorkScheduler()
+            val vm = viewModel(listOf(point(1), point(2), point(3)), walkRepository, scheduler)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.onExit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(WalkStatus.COMPLETED, walkRepository.getWalkById(1L)?.status)
+            assertTrue(scheduler.calculationEnqueued.isEmpty())
+        }
+
+    @Test
+    fun `leaving the editor after a deletion sets the walk to PENDING_MATCH and enqueues map matching`() =
+        runTest {
+            val walkRepository = FakeWalkRepository(listOf(walk(status = WalkStatus.COMPLETED)))
+            val scheduler = FakeWalkWorkScheduler()
+            val vm = viewModel(listOf(point(1), point(2), point(3)), walkRepository, scheduler)
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.deletePoint(point(2))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.onExit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(WalkStatus.PENDING_MATCH, walkRepository.getWalkById(1L)?.status)
+            assertEquals(listOf(1L), scheduler.calculationEnqueued)
         }
 
     @Test

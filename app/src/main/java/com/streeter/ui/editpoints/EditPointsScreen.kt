@@ -1,5 +1,6 @@
 package com.streeter.ui.editpoints
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -76,6 +77,13 @@ fun EditPointsScreen(
     val undoLabel = stringResource(R.string.label_undo)
     val deletedMessage = stringResource(R.string.message_point_deleted)
 
+    fun exitEditor() {
+        viewModel.onExit()
+        onNavigateBack()
+    }
+
+    BackHandler(onBack = ::exitEditor)
+
     fun snapSheetTo(expanded: Boolean) {
         scope.launch { sheetHeightPx.animateTo(if (expanded) sheetExpandedPx else sheetPeekPx) }
     }
@@ -115,7 +123,7 @@ fun EditPointsScreen(
             TopAppBar(
                 title = { Text(stringResource(R.string.label_edit_points)) },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
+                    IconButton(onClick = ::exitEditor) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 },
