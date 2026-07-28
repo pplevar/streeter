@@ -26,6 +26,8 @@
     <string name="label_add_point">Add Point</string>
     <string name="label_finish_walk">Finish</string>
     <string name="label_delete">Delete</string>
+    <string name="label_previous_point">Previous point</string>
+    <string name="label_next_point">Next point</string>
     <string name="label_cancel">Cancel</string>
     <string name="label_confirm">Confirm</string>
     <string name="label_processing">Processing route…</string>

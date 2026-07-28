@@ -31,6 +31,10 @@ data class EditPointsUiState(
 ) {
     val selectedPoint: GpsPoint? get() = points.find { it.id == selectedPointId }
     val canDeleteMore: Boolean get() = points.size > MIN_POINTS
+    private val selectedIndex: Int?
+        get() = points.indexOfFirst { it.id == selectedPointId }.takeIf { it >= 0 }
+    val canGoPrevious: Boolean get() = (selectedIndex ?: 0) > 0
+    val canGoNext: Boolean get() = selectedIndex?.let { it < points.size - 1 } ?: false
 }
 
 @HiltViewModel
@@ -64,17 +68,48 @@ class EditPointsViewModel
             _uiState.update { it.copy(selectedPointId = pointId) }
         }
 
-        /** Swipe-deletes [point], unless doing so would drop the walk below [MIN_POINTS]. */
+        /** Moves the selection to the previous point in list order; no-op at the start of the list. */
+        fun selectPrevious() {
+            val state = _uiState.value
+            val index = state.points.indexOfFirst { it.id == state.selectedPointId }
+            if (index <= 0) return
+            _uiState.update { it.copy(selectedPointId = state.points[index - 1].id) }
+        }
+
+        /** Moves the selection to the next point in list order; no-op at the end of the list. */
+        fun selectNext() {
+            val state = _uiState.value
+            val index = state.points.indexOfFirst { it.id == state.selectedPointId }
+            if (index < 0 || index >= state.points.size - 1) return
+            _uiState.update { it.copy(selectedPointId = state.points[index + 1].id) }
+        }
+
+        /**
+         * Deletes [point], unless doing so would drop the walk below [MIN_POINTS]. If [point] was
+         * selected, the selection auto-advances to the point that takes its place in list order
+         * (or the new last point, if the deleted point was last) rather than dropping to none.
+         */
         fun deletePoint(point: GpsPoint) {
-            if (!_uiState.value.canDeleteMore) {
+            val state = _uiState.value
+            if (!state.canDeleteMore) {
                 _uiState.update { it.copy(minPointsMessage = true) }
                 return
             }
+            val newSelectedId =
+                if (state.selectedPointId == point.id) {
+                    val index = state.points.indexOfFirst { it.id == point.id }
+                    val remaining = state.points.filterNot { it.id == point.id }
+                    when {
+                        remaining.isEmpty() -> null
+                        index < remaining.size -> remaining[index].id
+                        else -> remaining.last().id
+                    }
+                } else {
+                    state.selectedPointId
+                }
+            _uiState.update { it.copy(selectedPointId = newSelectedId) }
             viewModelScope.launch {
                 gpsPointRepository.deletePoint(walkId, point.id)
-                _uiState.update {
-                    it.copy(selectedPointId = if (it.selectedPointId == point.id) null else it.selectedPointId)
-                }
                 _undoEvents.send(PendingUndo(point))
             }
         }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -82,7 +83,10 @@ fun EditPointsScreen(
     fun selectAndCenter(point: GpsPoint) {
         viewModel.selectPoint(point.id)
         snapSheetTo(expanded = false)
-        centerOn(mapRef, point, sheetPeekPx)
+    }
+
+    LaunchedEffect(uiState.selectedPointId, mapRef) {
+        uiState.selectedPoint?.let { centerOn(mapRef, it, sheetPeekPx) }
     }
 
     LaunchedEffect(Unit) {
@@ -128,6 +132,21 @@ fun EditPointsScreen(
                 selectedPoint = uiState.selectedPoint,
                 onMapReady = { mapRef = it },
             )
+
+            if (uiState.selectedPoint != null && !sheetExpanded) {
+                PointControlPill(
+                    canGoPrevious = uiState.canGoPrevious,
+                    canGoNext = uiState.canGoNext,
+                    canDelete = uiState.canDeleteMore,
+                    onPrevious = viewModel::selectPrevious,
+                    onNext = viewModel::selectNext,
+                    onDelete = { uiState.selectedPoint?.let(viewModel::deletePoint) },
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = SheetPeekHeight + 16.dp),
+                )
+            }
 
             Column(
                 modifier =
@@ -210,6 +229,46 @@ fun EditPointsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PointControlPill(
+    canGoPrevious: Boolean,
+    canGoNext: Boolean,
+    canDelete: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(28.dp))
+                .background(MaterialTheme.colorScheme.surface)
+                .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onPrevious, enabled = canGoPrevious) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.label_previous_point),
+            )
+        }
+        IconButton(onClick = onDelete, enabled = canDelete) {
+            Icon(
+                Icons.Default.Delete,
+                contentDescription = stringResource(R.string.label_delete),
+                tint = if (canDelete) MaterialTheme.colorScheme.error else LocalContentColor.current,
+            )
+        }
+        IconButton(onClick = onNext, enabled = canGoNext) {
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = stringResource(R.string.label_next_point),
+            )
         }
     }
 }

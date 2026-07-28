@@ -186,7 +186,7 @@ class EditPointsViewModelTest {
         }
 
     @Test
-    fun `deleting the selected point clears the selection`() =
+    fun `deleting the selected point auto-advances selection to the point that took its place`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
             dispatcher.scheduler.advanceUntilIdle()
@@ -195,7 +195,86 @@ class EditPointsViewModelTest {
             vm.deletePoint(point(2))
             dispatcher.scheduler.advanceUntilIdle()
 
-            assertNull(vm.uiState.value.selectedPointId)
+            assertEquals(3L, vm.uiState.value.selectedPointId)
+        }
+
+    @Test
+    fun `deleting the selected last point auto-advances selection to the new last point`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(3L)
+
+            vm.deletePoint(point(3))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(2L, vm.uiState.value.selectedPointId)
+        }
+
+    @Test
+    fun `deleting a non-selected point leaves the selection untouched`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(1L)
+
+            vm.deletePoint(point(3))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(1L, vm.uiState.value.selectedPointId)
+        }
+
+    @Test
+    fun `selectPrevious moves selection to the adjacent point and stops at the start`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(3L)
+
+            vm.selectPrevious()
+            assertEquals(2L, vm.uiState.value.selectedPointId)
+
+            vm.selectPrevious()
+            assertEquals(1L, vm.uiState.value.selectedPointId)
+
+            vm.selectPrevious()
+            assertEquals(1L, vm.uiState.value.selectedPointId)
+        }
+
+    @Test
+    fun `selectNext moves selection to the adjacent point and stops at the end`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(1L)
+
+            vm.selectNext()
+            assertEquals(2L, vm.uiState.value.selectedPointId)
+
+            vm.selectNext()
+            assertEquals(3L, vm.uiState.value.selectedPointId)
+
+            vm.selectNext()
+            assertEquals(3L, vm.uiState.value.selectedPointId)
+        }
+
+    @Test
+    fun `canGoPrevious and canGoNext reflect position in the list`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.selectPoint(1L)
+            assertFalse(vm.uiState.value.canGoPrevious)
+            assertTrue(vm.uiState.value.canGoNext)
+
+            vm.selectPoint(2L)
+            assertTrue(vm.uiState.value.canGoPrevious)
+            assertTrue(vm.uiState.value.canGoNext)
+
+            vm.selectPoint(3L)
+            assertTrue(vm.uiState.value.canGoPrevious)
+            assertFalse(vm.uiState.value.canGoNext)
         }
 
     @Test
