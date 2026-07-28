@@ -143,99 +143,103 @@ fun EditPointsScreen(
                 onMapReady = { mapRef = it },
             )
 
-            if (uiState.selectedPoint != null && !sheetExpanded) {
-                PointControlPill(
-                    canGoPrevious = uiState.canGoPrevious,
-                    canGoNext = uiState.canGoNext,
-                    canDelete = uiState.canDeleteMore,
-                    onPrevious = viewModel::selectPrevious,
-                    onNext = viewModel::selectNext,
-                    onDelete = { uiState.selectedPoint?.let(viewModel::deletePoint) },
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(bottom = SheetPeekHeight + 16.dp),
-                )
-            }
-
             Column(
                 modifier =
                     Modifier
                         .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(padding)
-                        .height(with(density) { sheetHeightPx.value.toDp() })
-                        .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(top = 8.dp),
+                        .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                Box(
-                    Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .width(36.dp)
-                        .height(24.dp)
-                        .clickable { snapSheetTo(expanded = !sheetExpanded) }
-                        .pointerInput(Unit) {
-                            detectVerticalDragGestures(
-                                onDragEnd = {
-                                    val expanded = sheetHeightPx.value > (sheetPeekPx + sheetExpandedPx) / 2f
-                                    snapSheetTo(expanded)
-                                },
-                            ) { change, dragAmount ->
-                                change.consume()
-                                scope.launch {
-                                    sheetHeightPx.snapTo(
-                                        (sheetHeightPx.value - dragAmount).coerceIn(sheetPeekPx, sheetExpandedPx),
-                                    )
-                                }
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
+                if (uiState.selectedPoint != null && !sheetExpanded) {
+                    PointControlPill(
+                        canGoPrevious = uiState.canGoPrevious,
+                        canGoNext = uiState.canGoNext,
+                        canDelete = uiState.canDeleteMore,
+                        onPrevious = viewModel::selectPrevious,
+                        onNext = viewModel::selectNext,
+                        onDelete = { uiState.selectedPoint?.let(viewModel::deletePoint) },
+                        modifier = Modifier.padding(bottom = 16.dp),
+                    )
+                }
+
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(padding)
+                            .height(with(density) { sheetHeightPx.value.toDp() })
+                            .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .padding(top = 8.dp),
                 ) {
                     Box(
                         Modifier
+                            .align(Alignment.CenterHorizontally)
                             .width(36.dp)
-                            .height(4.dp)
-                            .clip(RoundedCornerShape(2.dp))
-                            .background(MaterialTheme.colorScheme.outlineVariant),
-                    )
-                }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        stringResource(R.string.label_points_count, uiState.points.size),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp,
-                    )
-                }
-                if (uiState.minPointsMessage) {
-                    Text(
-                        stringResource(R.string.message_min_points_floor),
-                        color = MaterialTheme.colorScheme.error,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
-                    )
-                }
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    items(uiState.points, key = { it.id }) { point ->
-                        val index = uiState.points.indexOf(point)
-                        PointRow(
-                            index = index,
-                            point = point,
-                            selected = uiState.selectedPointId == point.id,
-                            canDelete = uiState.canDeleteMore,
-                            onClick = { selectAndPeek(point) },
-                            onDelete = { viewModel.deletePoint(point) },
+                            .height(24.dp)
+                            .clickable { snapSheetTo(expanded = !sheetExpanded) }
+                            .pointerInput(Unit) {
+                                detectVerticalDragGestures(
+                                    onDragEnd = {
+                                        val expanded = sheetHeightPx.value > (sheetPeekPx + sheetExpandedPx) / 2f
+                                        snapSheetTo(expanded)
+                                    },
+                                ) { change, dragAmount ->
+                                    change.consume()
+                                    scope.launch {
+                                        sheetHeightPx.snapTo(
+                                            (sheetHeightPx.value - dragAmount).coerceIn(sheetPeekPx, sheetExpandedPx),
+                                        )
+                                    }
+                                }
+                            },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(
+                            Modifier
+                                .width(36.dp)
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(MaterialTheme.colorScheme.outlineVariant),
                         )
+                    }
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            stringResource(R.string.label_points_count, uiState.points.size),
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                        )
+                    }
+                    if (uiState.minPointsMessage) {
+                        Text(
+                            stringResource(R.string.message_min_points_floor),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 2.dp),
+                        )
+                    }
+                    LazyColumn(
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        items(uiState.points, key = { it.id }) { point ->
+                            val index = uiState.points.indexOf(point)
+                            PointRow(
+                                index = index,
+                                point = point,
+                                selected = uiState.selectedPointId == point.id,
+                                canDelete = uiState.canDeleteMore,
+                                onClick = { selectAndPeek(point) },
+                                onDelete = { viewModel.deletePoint(point) },
+                            )
+                        }
                     }
                 }
             }
