@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.ui.editpoints.EditPointsViewModel
+import com.streeter.ui.editpoints.PendingUndo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -11,7 +12,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
@@ -95,6 +98,13 @@ class EditPointsViewModelTest {
         return EditPointsViewModel(savedStateHandle, FakeGpsPointRepository(points))
     }
 
+    /** Collects [EditPointsViewModel.undoEvents] into a list for assertions, as the screen would via `collect`. */
+    private fun TestScope.collectUndoEvents(vm: EditPointsViewModel): List<PendingUndo> {
+        val events = mutableListOf<PendingUndo>()
+        launch { vm.undoEvents.collect { events += it } }
+        return events
+    }
+
     @Test
     fun `loads the walk's GPS points on start`() =
         runTest {
@@ -149,15 +159,30 @@ class EditPointsViewModelTest {
         }
 
     @Test
-    fun `deleting a point sets a pending undo for the exact point removed`() =
+    fun `deleting a point emits an undo event for the exact point removed`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
+            val undoEvents = collectUndoEvents(vm)
             dispatcher.scheduler.advanceUntilIdle()
 
             vm.deletePoint(point(2))
             dispatcher.scheduler.advanceUntilIdle()
 
-            assertEquals(point(2), vm.uiState.value.pendingUndo?.point)
+            assertEquals(listOf(PendingUndo(point(2))), undoEvents)
+        }
+
+    @Test
+    fun `deleting two points in quick succession emits an undo event for each, in order`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            val undoEvents = collectUndoEvents(vm)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.deletePoint(point(1))
+            vm.deletePoint(point(2))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(listOf(PendingUndo(point(1)), PendingUndo(point(2))), undoEvents)
         }
 
     @Test
@@ -177,28 +202,25 @@ class EditPointsViewModelTest {
     fun `undoing a delete restores the exact point that was deleted`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
+            val undoEvents = collectUndoEvents(vm)
             dispatcher.scheduler.advanceUntilIdle()
             vm.deletePoint(point(2))
             dispatcher.scheduler.advanceUntilIdle()
 
-            vm.undoDelete(checkNotNull(vm.uiState.value.pendingUndo))
+            vm.undoDelete(undoEvents.single())
             dispatcher.scheduler.advanceUntilIdle()
 
             assertEquals(listOf(point(1), point(2), point(3)), vm.uiState.value.points)
-            assertNull(vm.uiState.value.pendingUndo)
         }
 
     @Test
-    fun `dismissing the undo snackbar without acting clears the pending undo`() =
+    fun `not acting on the undo event leaves the deletion in place`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
             dispatcher.scheduler.advanceUntilIdle()
             vm.deletePoint(point(2))
             dispatcher.scheduler.advanceUntilIdle()
 
-            vm.consumePendingUndo()
-
-            assertNull(vm.uiState.value.pendingUndo)
             assertEquals(listOf(point(1), point(3)), vm.uiState.value.points)
         }
 
@@ -218,14 +240,29 @@ class EditPointsViewModelTest {
     fun `deleting when only 2 points remain is blocked and shows the floor message`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2)))
+            val undoEvents = collectUndoEvents(vm)
             dispatcher.scheduler.advanceUntilIdle()
 
             vm.deletePoint(point(2))
             dispatcher.scheduler.advanceUntilIdle()
 
             assertEquals(listOf(point(1), point(2)), vm.uiState.value.points)
-            assertNull(vm.uiState.value.pendingUndo)
+            assertTrue(undoEvents.isEmpty())
             assertTrue(vm.uiState.value.minPointsMessage)
+        }
+
+    @Test
+    fun `canDeleteMore reflects the 2-point floor`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.canDeleteMore)
+
+            vm.deletePoint(point(3))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertFalse(vm.uiState.value.canDeleteMore)
         }
 
     @Test

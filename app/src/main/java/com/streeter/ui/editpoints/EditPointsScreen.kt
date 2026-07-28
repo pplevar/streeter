@@ -85,18 +85,17 @@ fun EditPointsScreen(
         centerOn(mapRef, point, sheetPeekPx)
     }
 
-    LaunchedEffect(uiState.pendingUndo?.token) {
-        val pendingUndo = uiState.pendingUndo ?: return@LaunchedEffect
-        val result =
-            snackbarHostState.showSnackbar(
-                message = deletedMessage,
-                actionLabel = undoLabel,
-                duration = SnackbarDuration.Short,
-            )
-        if (result == SnackbarResult.ActionPerformed) {
-            viewModel.undoDelete(pendingUndo)
-        } else {
-            viewModel.consumePendingUndo()
+    LaunchedEffect(Unit) {
+        viewModel.undoEvents.collect { pendingUndo ->
+            val result =
+                snackbarHostState.showSnackbar(
+                    message = deletedMessage,
+                    actionLabel = undoLabel,
+                    duration = SnackbarDuration.Short,
+                )
+            if (result == SnackbarResult.ActionPerformed) {
+                viewModel.undoDelete(pendingUndo)
+            }
         }
     }
 
@@ -204,7 +203,7 @@ fun EditPointsScreen(
                             index = index,
                             point = point,
                             selected = uiState.selectedPointId == point.id,
-                            canDelete = uiState.points.size > 2,
+                            canDelete = uiState.canDeleteMore,
                             onClick = { selectAndCenter(point) },
                             onDelete = { viewModel.deletePoint(point) },
                         )
