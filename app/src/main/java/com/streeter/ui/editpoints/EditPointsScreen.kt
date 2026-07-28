@@ -80,7 +80,7 @@ fun EditPointsScreen(
         scope.launch { sheetHeightPx.animateTo(if (expanded) sheetExpandedPx else sheetPeekPx) }
     }
 
-    fun selectAndCenter(point: GpsPoint) {
+    fun selectAndPeek(point: GpsPoint) {
         viewModel.selectPoint(point.id)
         snapSheetTo(expanded = false)
     }
@@ -223,7 +223,7 @@ fun EditPointsScreen(
                             point = point,
                             selected = uiState.selectedPointId == point.id,
                             canDelete = uiState.canDeleteMore,
-                            onClick = { selectAndCenter(point) },
+                            onClick = { selectAndPeek(point) },
                             onDelete = { viewModel.deletePoint(point) },
                         )
                     }

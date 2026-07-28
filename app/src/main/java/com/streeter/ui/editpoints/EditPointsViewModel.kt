@@ -31,10 +31,12 @@ data class EditPointsUiState(
 ) {
     val selectedPoint: GpsPoint? get() = points.find { it.id == selectedPointId }
     val canDeleteMore: Boolean get() = points.size > MIN_POINTS
-    private val selectedIndex: Int?
-        get() = points.indexOfFirst { it.id == selectedPointId }.takeIf { it >= 0 }
-    val canGoPrevious: Boolean get() = (selectedIndex ?: 0) > 0
+    private val selectedIndex: Int? get() = indexOf(selectedPointId)
+    val canGoPrevious: Boolean get() = selectedIndex?.let { it > 0 } ?: false
     val canGoNext: Boolean get() = selectedIndex?.let { it < points.size - 1 } ?: false
+
+    /** Position of the point with [id] in [points], or null if it isn't present. */
+    fun indexOf(id: Long?): Int? = points.indexOfFirst { it.id == id }.takeIf { it >= 0 }
 }
 
 @HiltViewModel
@@ -71,7 +73,7 @@ class EditPointsViewModel
         /** Moves the selection to the previous point in list order; no-op at the start of the list. */
         fun selectPrevious() {
             val state = _uiState.value
-            val index = state.points.indexOfFirst { it.id == state.selectedPointId }
+            val index = state.indexOf(state.selectedPointId) ?: return
             if (index <= 0) return
             _uiState.update { it.copy(selectedPointId = state.points[index - 1].id) }
         }
@@ -79,8 +81,8 @@ class EditPointsViewModel
         /** Moves the selection to the next point in list order; no-op at the end of the list. */
         fun selectNext() {
             val state = _uiState.value
-            val index = state.points.indexOfFirst { it.id == state.selectedPointId }
-            if (index < 0 || index >= state.points.size - 1) return
+            val index = state.indexOf(state.selectedPointId) ?: return
+            if (index >= state.points.size - 1) return
             _uiState.update { it.copy(selectedPointId = state.points[index + 1].id) }
         }
 
@@ -97,7 +99,7 @@ class EditPointsViewModel
             }
             val newSelectedId =
                 if (state.selectedPointId == point.id) {
-                    val index = state.points.indexOfFirst { it.id == point.id }
+                    val index = state.indexOf(point.id) ?: 0
                     val remaining = state.points.filterNot { it.id == point.id }
                     when {
                         remaining.isEmpty() -> null
