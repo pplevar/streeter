@@ -17,6 +17,7 @@ import com.streeter.domain.model.WalkSectionCoverage
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.model.WalkStreetCoverage
+import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
@@ -220,6 +221,35 @@ internal class FakeWalkRepository(
     ) {
         traceSyncedAt[id] = timestamp
     }
+}
+
+/** Records the trace writes the pull feed makes; every other read is inert. */
+internal class RecordingGpsPointRepository : GpsPointRepository {
+    val replacedWalks = mutableListOf<Long>()
+    val replacedPoints = mutableListOf<GpsPoint>()
+
+    override suspend fun replacePointsFromRemote(
+        walkId: Long,
+        points: List<GpsPoint>,
+    ) {
+        replacedWalks += walkId
+        replacedPoints += points
+    }
+
+    override suspend fun insertPoints(points: List<GpsPoint>) = Unit
+
+    override suspend fun getPointsForWalk(walkId: Long): List<GpsPoint> = emptyList()
+
+    override suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint> = emptyList()
+
+    override fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>> = flowOf(emptyList())
+
+    override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint> = emptyList()
+
+    override suspend fun deletePoint(
+        walkId: Long,
+        pointId: Long,
+    ): Int = 0
 }
 
 /**

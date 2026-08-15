@@ -6,9 +6,7 @@ import com.streeter.data.remote.dto.GpsTraceResponse
 import com.streeter.data.remote.dto.WalkSyncDto
 import com.streeter.data.repository.RemoteSyncRepositoryImpl
 import com.streeter.di.configureStreeterClient
-import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.WalkStatus
-import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.work.WalkRecalculator
 import com.streeter.domain.work.WalkSyncFinalizer
 import io.ktor.client.HttpClient
@@ -18,8 +16,6 @@ import io.ktor.client.request.HttpRequestData
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.headersOf
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -335,33 +331,4 @@ class RemoteSyncPullTest {
             assertTrue(f.gpsPointRepository.replacedWalks.isEmpty())
             assertEquals(300L, f.syncCursor.pullSince())
         }
-}
-
-/** Records the trace writes the pull feed makes; every other read is inert. */
-internal class RecordingGpsPointRepository : GpsPointRepository {
-    val replacedWalks = mutableListOf<Long>()
-    val replacedPoints = mutableListOf<GpsPoint>()
-
-    override suspend fun replacePointsFromRemote(
-        walkId: Long,
-        points: List<GpsPoint>,
-    ) {
-        replacedWalks += walkId
-        replacedPoints += points
-    }
-
-    override suspend fun insertPoints(points: List<GpsPoint>) = Unit
-
-    override suspend fun getPointsForWalk(walkId: Long): List<GpsPoint> = emptyList()
-
-    override suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint> = emptyList()
-
-    override fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>> = flowOf(emptyList())
-
-    override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint> = emptyList()
-
-    override suspend fun deletePoint(
-        walkId: Long,
-        pointId: Long,
-    ): Int = 0
 }
