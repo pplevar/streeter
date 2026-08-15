@@ -101,7 +101,7 @@ fun EditPointsScreen(
             navigationBarPx = with(density) { navBarInset.toPx() },
             density = density,
         )
-    val revealMarginPx = with(density) { EditorChrome.RevealMargin.toPx() }
+    val revealMarginPx = revealMarginPx(density)
 
     fun exitEditor() {
         scope.launch {
@@ -302,8 +302,9 @@ fun EditPointsScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(uiState.points, key = { it.id }) { point ->
+                            val index = uiState.indexOf(point.id) ?: return@items
                             PointRow(
-                                index = uiState.indexOf(point.id) ?: 0,
+                                index = index,
                                 point = point,
                                 selected = uiState.selectedPointId == point.id,
                                 canDelete = uiState.canDeleteMore,
@@ -336,20 +337,20 @@ private fun PointControlPill(
                 .padding(horizontal = EditorChrome.PillPadding, vertical = EditorChrome.PillPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onPrevious, enabled = canGoPrevious, modifier = Modifier.size(EditorChrome.PillButtonSize)) {
+        IconButton(onClick = onPrevious, enabled = canGoPrevious) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(R.string.label_previous_point),
             )
         }
-        IconButton(onClick = onDelete, enabled = canDelete, modifier = Modifier.size(EditorChrome.PillButtonSize)) {
+        IconButton(onClick = onDelete, enabled = canDelete) {
             Icon(
                 Icons.Default.Delete,
                 contentDescription = stringResource(R.string.label_delete),
                 tint = if (canDelete) MaterialTheme.colorScheme.error else LocalContentColor.current,
             )
         }
-        IconButton(onClick = onNext, enabled = canGoNext, modifier = Modifier.size(EditorChrome.PillButtonSize)) {
+        IconButton(onClick = onNext, enabled = canGoNext) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = stringResource(R.string.label_next_point),

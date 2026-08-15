@@ -26,7 +26,11 @@ object EditorChrome {
     val SheetExpandedHeightMin = 280.dp
     val SheetExpandedHeightMax = 480.dp
 
-    /** Touch target of each of the pill's three icon buttons. */
+    /**
+     * Height of each of the pill's icon buttons — Material's minimum interactive size, which
+     * `IconButton` enforces itself. The one pill dimension not set by this file, so the test
+     * that pins [PillInset] to its measured total is what keeps it honest.
+     */
     val PillButtonSize = 48.dp
 
     /** Padding inside the pill, around its buttons. */
@@ -43,12 +47,15 @@ object EditorChrome {
 
     /** Breathing room kept between a revealed point and the edge of the uncovered map area. */
     val RevealMargin = 24.dp
-
-    /** The expanded sheet's content height on a screen [screenHeight] tall. */
-    fun sheetExpandedHeight(screenHeight: Dp): Dp =
-        (screenHeight * SHEET_EXPANDED_FRACTION)
-            .coerceIn(SheetExpandedHeightMin, SheetExpandedHeightMax)
 }
+
+/** The margin [panToReveal] keeps off the uncovered region's edges, in pixels. */
+fun revealMarginPx(density: Density): Float = with(density) { EditorChrome.RevealMargin.toPx() }
+
+/** The expanded sheet's content height on a screen [screenHeight] tall. */
+fun sheetExpandedHeight(screenHeight: Dp): Dp =
+    (screenHeight * EditorChrome.SHEET_EXPANDED_FRACTION)
+        .coerceIn(EditorChrome.SheetExpandedHeightMin, EditorChrome.SheetExpandedHeightMax)
 
 /**
  * The sheet's two resting heights in pixels, and which of them a given height belongs to.
@@ -71,7 +78,7 @@ fun sheetMetrics(
     with(density) {
         SheetMetrics(
             peekPx = EditorChrome.SheetPeekHeight.toPx(),
-            expandedPx = EditorChrome.sheetExpandedHeight(screenHeight).toPx(),
+            expandedPx = sheetExpandedHeight(screenHeight).toPx(),
         )
     }
 
@@ -81,6 +88,11 @@ fun sheetMetrics(
  * The sheet snaps to peek on every selection, so peek — not the sheet's current height — is
  * what the marker must clear, with the pill above it and the navigation bar below. The top is
  * the status bar plus the app bar drawn over it. Nothing covers the map sideways.
+ *
+ * The pill counts here. ADR-0005 rule 5 excludes it, but that rule is about the *camera
+ * padding* that the since-replaced snap-to-marker behaviour used; ADR-0007, which replaced it,
+ * lists the pill among the insets the uncovered region subtracts. This preserves the behaviour
+ * shipped with ADR-0007 rather than reopening either decision.
  */
 fun editorMapInsets(
     statusBarPx: Float,

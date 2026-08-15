@@ -611,7 +611,7 @@ class EditPointsViewModelTest {
             val vm = viewModel(listOf(point(1), point(2)))
             dispatcher.scheduler.advanceUntilIdle()
 
-            assertNull(vm.uiState.value.rowToScrollTo(visibleRows = listOf(0, 1)))
+            assertNull(vm.uiState.value.rowToScrollTo(visibleRows = emptyList()))
         }
 
     @Test

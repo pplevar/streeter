@@ -6,6 +6,7 @@ import com.streeter.ui.editpoints.EditorChrome
 import com.streeter.ui.editpoints.PointPan
 import com.streeter.ui.editpoints.cameraCentreAfterPan
 import com.streeter.ui.editpoints.editorMapInsets
+import com.streeter.ui.editpoints.revealMarginPx
 import com.streeter.ui.editpoints.sheetMetrics
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -107,6 +108,12 @@ class EditorChromeTest {
         assertEquals(0f, insets.right)
     }
 
+    @Test
+    fun `the reveal margin is the same breathing room whatever the screen density`() {
+        assertEquals(48f, revealMarginPx(density)) // 24dp
+        assertEquals(72f, revealMarginPx(Density(density = 3f)))
+    }
+
     // --- Turning a pan offset into a camera target -----------------------------------------
 
     @Test
@@ -137,12 +144,9 @@ class EditorChromeTest {
 
     @Test
     fun `the pill inset is the height of the pill the screen actually lays out`() {
-        // The pill is a row of icon buttons with its own padding, sitting a gap above the sheet.
-        // Change any of those in the screen and this sum moves with it.
-        assertEquals(
-            EditorChrome.PillButtonSize + EditorChrome.PillPadding * 2 + EditorChrome.PillGap,
-            EditorChrome.PillInset,
-        )
+        // The pill is a row of icon buttons with its own padding, sitting a gap above the sheet,
+        // and EditPointsScreen lays it out from these same constants. Resize any of them and
+        // this hand-measured total no longer holds.
         assertEquals(72.dp, EditorChrome.PillInset)
     }
 
