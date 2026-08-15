@@ -2,13 +2,7 @@
 
 ## Architecture
 
-Clean architecture with three layers:
-
-- **`domain/`** — pure Kotlin; defines repository interfaces, domain models, and `RoutingEngine` interface. No Android imports.
-- **`data/`** — implements domain interfaces: Room database (`local/`), repository implementations (`repository/`), and two engines (`engine/`).
-- **`ui/`** — Jetpack Compose screens + Hilt `ViewModel`s, one subdirectory per screen.
-
-- DI wiring lives in `di/` (Hilt modules). `service/` holds `LocationService` (foreground). `work/` holds `MapMatchingWorker`. `map/` holds `TileServerManager`.
+Clean architecture: `domain/` is pure Kotlin — no Android imports.
 
 ## Key Data Flows
 
@@ -36,18 +30,7 @@ Two bundled assets are required for full functionality (not included in the repo
 
 ## Navigation
 
-`StreeterNavGraph` in `ui/navigation/` defines all routes via the `Screen` sealed class. Entry point is `Screen.Home`. Deep links follow the scheme `streeter://walk/{walkId}` and `streeter://walk/{walkId}/edit`.
-
 Prefer `android` CLI over raw `adb` or `avdmanager` for these tasks. Continue using `./gradlew` for building and testing.
-
-## DI Modules
-
-| Module | Provides |
-|---|---|
-| `DatabaseModule` | Room database + all DAOs |
-| `RepositoryModule` | Repository interface → impl bindings |
-| `EngineModule` | `RoutingEngine` → `GraphHopperEngine` binding |
-| `WorkManagerModule` | `HiltWorkerFactory` for `MapMatchingWorker` |
 
 ## Agent skills
 
