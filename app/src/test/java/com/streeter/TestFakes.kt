@@ -14,6 +14,7 @@ import com.streeter.domain.model.StreetWalkEntry
 import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkSectionCoverage
+import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.model.WalkStreetCoverage
 import com.streeter.domain.repository.PendingMatchJobRepository
@@ -27,6 +28,27 @@ import kotlinx.coroutines.flow.flowOf
 //
 // Keep these minimal — production code should be exercised through the real interfaces.
 // Each fake records its inputs where the test needs to inspect them.
+
+/** A [Walk] with inert defaults; name only the fields the test is about. */
+internal fun testWalk(
+    id: Long = 1L,
+    status: WalkStatus = WalkStatus.COMPLETED,
+    syncStatus: SyncStatus = SyncStatus.PENDING_SYNC,
+    serverWalkId: Long? = null,
+    distanceM: Double = 0.0,
+) = Walk(
+    id = id,
+    title = null,
+    date = 0L,
+    durationMs = 0L,
+    distanceM = distanceM,
+    status = status,
+    source = WalkSource.RECORDED,
+    createdAt = 0L,
+    updatedAt = 0L,
+    syncStatus = syncStatus,
+    serverWalkId = serverWalkId,
+)
 
 /** Runs the supplied block inline — sufficient for unit tests that don't need real Room transactions. */
 internal val InlineTransactionRunner = TransactionRunner { block -> block() }

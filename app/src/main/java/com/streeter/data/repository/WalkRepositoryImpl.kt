@@ -57,7 +57,7 @@ class WalkRepositoryImpl
             serverWalkId: Long?,
         ) = walkDao.updateSyncStatus(id, syncStatus.name, serverWalkId)
 
-        override suspend fun markSyncFailed(id: Long) = walkDao.markSyncFailed(id)
+        override suspend fun markSyncFailed(id: Long) = walkDao.updateSyncStatusOnly(id, SyncStatus.SYNC_FAILED.name)
 
         override suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk? = walkDao.getWalkByServerWalkId(serverWalkId)?.toDomain()
 

@@ -1,9 +1,6 @@
 package com.streeter
 
 import com.streeter.domain.model.SyncStatus
-import com.streeter.domain.model.Walk
-import com.streeter.domain.model.WalkSource
-import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.work.WalkSyncFinalizer
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -18,22 +15,9 @@ import org.junit.Test
  */
 class WalkSyncFinalizerTest {
     private fun walk(
-        id: Long = 1L,
         syncStatus: SyncStatus = SyncStatus.PENDING_SYNC,
         serverWalkId: Long? = null,
-    ) = Walk(
-        id = id,
-        title = null,
-        date = 0L,
-        durationMs = 0L,
-        distanceM = 0.0,
-        status = WalkStatus.COMPLETED,
-        source = WalkSource.RECORDED,
-        createdAt = 0L,
-        updatedAt = 0L,
-        syncStatus = syncStatus,
-        serverWalkId = serverWalkId,
-    )
+    ) = testWalk(syncStatus = syncStatus, serverWalkId = serverWalkId)
 
     @Test
     fun `a failed attempt lands the walk in SYNC_FAILED`() =
@@ -74,19 +58,27 @@ class WalkSyncFinalizerTest {
         runBlocking {
             val repo = FakeWalkRepository(listOf(walk()))
             val finalizer = WalkSyncFinalizer(repo)
+            val server = FakeServer()
 
-            // First sync succeeds and the server hands back an id.
-            finalizer.succeed(1L, serverWalkId = 99L)
-            // A transient failure follows.
+            // A sync sends the walk's current server id (null the first time) and adopts whatever
+            // the server answers with — exactly what RemoteSyncRepositoryImpl does.
+            suspend fun sync() = finalizer.succeed(1L, server.upsert(repo.getWalkById(1L)!!.serverWalkId))
+
+            sync()
             finalizer.fail(1L)
-
-            // The retry still carries the server id, so the server updates walk 99 instead of
-            // creating a second one.
-            assertEquals(99L, repo.getWalkById(1L)!!.serverWalkId)
-
-            finalizer.succeed(1L, serverWalkId = 99L)
+            sync()
 
             assertEquals(SyncStatus.SYNCED, repo.getWalkById(1L)!!.syncStatus)
+            // One server walk, not two: the failure did not cost the walk its identity.
+            assertEquals(1, server.walkCount)
             assertEquals(99L, repo.getWalkById(1L)!!.serverWalkId)
         }
+
+    /** Stands in for the server's upsert: a known id updates in place, a null id creates a walk. */
+    private class FakeServer {
+        var walkCount = 0
+            private set
+
+        fun upsert(serverWalkId: Long?): Long = serverWalkId ?: (99L + walkCount).also { walkCount++ }
+    }
 }
