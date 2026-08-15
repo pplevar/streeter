@@ -39,6 +39,7 @@ fun RecordingScreen(
     val distanceM by viewModel.distanceM.collectAsState()
     val isWalkStarted by viewModel.isWalkStarted.collectAsState()
     val isPaused by viewModel.isPaused.collectAsState()
+    val historyGeometryJson by viewModel.historyGeometryJson.collectAsState()
     val context = LocalContext.current
     val initialLatLng =
         remember {
@@ -65,6 +66,7 @@ fun RecordingScreen(
             modifier = Modifier.fillMaxSize(),
             styleUrl = MAP_STYLE_URL,
             gpsPoints = gpsPoints,
+            historyGeometryJson = historyGeometryJson,
             followLocation = isWalkStarted && !isPaused,
             showCurrentPosition = isWalkStarted,
             initialLatLng = initialLatLng,

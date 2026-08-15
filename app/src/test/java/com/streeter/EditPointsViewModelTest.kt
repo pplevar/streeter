@@ -7,7 +7,6 @@ import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.WalkRepository
-import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.ui.editpoints.EditPointsViewModel
 import com.streeter.ui.editpoints.PendingUndo
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +82,8 @@ class EditPointsViewModelTest {
 
         override fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>> =
             state.asStateFlow().map { list -> list.filter { it.walkId == walkId } }
+
+        override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint> = emptyList()
 
         override suspend fun replacePointsFromRemote(
             walkId: Long,
