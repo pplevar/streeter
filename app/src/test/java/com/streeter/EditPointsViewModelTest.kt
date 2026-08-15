@@ -121,11 +121,27 @@ class EditPointsViewModelTest {
         return EditPointsViewModel(savedStateHandle, FakeGpsPointRepository(points), walkRepository, walkWorkScheduler)
     }
 
-    /** Collects [EditPointsViewModel.undoEvents] into a list for assertions, as the screen would via `collect`. */
-    private fun TestScope.collectUndoEvents(vm: EditPointsViewModel): List<PendingUndo> {
+    /**
+     * Runs [block] with a live collector on [EditPointsViewModel.undoEvents], as the screen has
+     * while it is on screen, passing it the events seen so far.
+     *
+     * The collector is a child of the test coroutine, so `advanceUntilIdle` drives it — coroutines
+     * launched on `backgroundScope` are *not* run by an `advanceUntilIdle` call from inside the
+     * test body, and the events would never arrive. `undoEvents` never completes, so the job is
+     * cancelled in a `finally`: left running, it would hang `runTest` to its timeout and fail the
+     * test with `UncompletedCoroutinesError` however the assertions went.
+     */
+    private fun TestScope.withUndoEvents(
+        vm: EditPointsViewModel,
+        block: (events: List<PendingUndo>) -> Unit,
+    ) {
         val events = mutableListOf<PendingUndo>()
-        launch { vm.undoEvents.collect { events += it } }
-        return events
+        val collector = launch { vm.undoEvents.collect { events += it } }
+        try {
+            block(events)
+        } finally {
+            collector.cancel()
+        }
     }
 
     @Test
@@ -185,27 +201,29 @@ class EditPointsViewModelTest {
     fun `deleting a point emits an undo event for the exact point removed`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
-            val undoEvents = collectUndoEvents(vm)
-            dispatcher.scheduler.advanceUntilIdle()
+            withUndoEvents(vm) { undoEvents ->
+                dispatcher.scheduler.advanceUntilIdle()
 
-            vm.deletePoint(point(2))
-            dispatcher.scheduler.advanceUntilIdle()
+                vm.deletePoint(point(2))
+                dispatcher.scheduler.advanceUntilIdle()
 
-            assertEquals(listOf(PendingUndo(point(2))), undoEvents)
+                assertEquals(listOf(PendingUndo(point(2))), undoEvents)
+            }
         }
 
     @Test
     fun `deleting two points in quick succession emits an undo event for each, in order`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
-            val undoEvents = collectUndoEvents(vm)
-            dispatcher.scheduler.advanceUntilIdle()
+            withUndoEvents(vm) { undoEvents ->
+                dispatcher.scheduler.advanceUntilIdle()
 
-            vm.deletePoint(point(1))
-            vm.deletePoint(point(2))
-            dispatcher.scheduler.advanceUntilIdle()
+                vm.deletePoint(point(1))
+                vm.deletePoint(point(2))
+                dispatcher.scheduler.advanceUntilIdle()
 
-            assertEquals(listOf(PendingUndo(point(1)), PendingUndo(point(2))), undoEvents)
+                assertEquals(listOf(PendingUndo(point(1)), PendingUndo(point(2))), undoEvents)
+            }
         }
 
     @Test
@@ -304,15 +322,16 @@ class EditPointsViewModelTest {
     fun `undoing a delete restores the exact point that was deleted`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
-            val undoEvents = collectUndoEvents(vm)
-            dispatcher.scheduler.advanceUntilIdle()
-            vm.deletePoint(point(2))
-            dispatcher.scheduler.advanceUntilIdle()
+            withUndoEvents(vm) { undoEvents ->
+                dispatcher.scheduler.advanceUntilIdle()
+                vm.deletePoint(point(2))
+                dispatcher.scheduler.advanceUntilIdle()
 
-            vm.undoDelete(undoEvents.single())
-            dispatcher.scheduler.advanceUntilIdle()
+                vm.undoDelete(undoEvents.single())
+                dispatcher.scheduler.advanceUntilIdle()
 
-            assertEquals(listOf(point(1), point(2), point(3)), vm.uiState.value.points)
+                assertEquals(listOf(point(1), point(2), point(3)), vm.uiState.value.points)
+            }
         }
 
     @Test
@@ -342,15 +361,16 @@ class EditPointsViewModelTest {
     fun `deleting when only 2 points remain is blocked and shows the floor message`() =
         runTest {
             val vm = viewModel(listOf(point(1), point(2)))
-            val undoEvents = collectUndoEvents(vm)
-            dispatcher.scheduler.advanceUntilIdle()
+            withUndoEvents(vm) { undoEvents ->
+                dispatcher.scheduler.advanceUntilIdle()
 
-            vm.deletePoint(point(2))
-            dispatcher.scheduler.advanceUntilIdle()
+                vm.deletePoint(point(2))
+                dispatcher.scheduler.advanceUntilIdle()
 
-            assertEquals(listOf(point(1), point(2)), vm.uiState.value.points)
-            assertTrue(undoEvents.isEmpty())
-            assertTrue(vm.uiState.value.minPointsMessage)
+                assertEquals(listOf(point(1), point(2)), vm.uiState.value.points)
+                assertTrue(undoEvents.isEmpty())
+                assertTrue(vm.uiState.value.minPointsMessage)
+            }
         }
 
     @Test
