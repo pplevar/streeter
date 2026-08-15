@@ -29,5 +29,6 @@ This ADR exists so that disagreement is not later mistaken for a bug and "fixed"
 - **The in-progress walk is excluded** by id, since the live route layer already draws it at full strength. On resume, the resumed walk's id is the excluded one.
 - **Each walk is its own `LineString`.** A single line across walks would draw a straight segment from the end of one walk to the start of the next.
 - **Filtered points are dropped**, matching the live route layer, so `GpsOutlierFilter`'s rejects do not reappear as history.
+- **`DELETED` walks are excluded.** Deleting a synced walk leaves a tombstone row — points included — until the server confirms, which offline can be days (ADR 0003). The history query joins `walks` and skips those, so a deleted walk leaves the map at once, like its Coverage does.
 - **Manual walks are included.** They are excluded from Map Matching but their drawn points are still a Trace.
 - **Volume is unbounded and unpaged.** At the current 20s sampling interval, ~36k points across 200 hour-long walks — fine. Denser sampling or a few hundred more walks makes decimation or viewport-bounded loading necessary; neither is built.
