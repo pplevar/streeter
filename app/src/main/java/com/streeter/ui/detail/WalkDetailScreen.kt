@@ -27,11 +27,11 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.R
 import com.streeter.domain.geometry.TraceGeometry
-import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.model.WalkStreetCoverage
+import com.streeter.domain.model.toLatLng
 import com.streeter.ui.map.MAP_STYLE_URL
 import com.streeter.ui.map.MapLibreMapView
 import com.streeter.ui.map.fitBoundsToGeometryJson
@@ -103,11 +103,11 @@ fun WalkDetailScreen(
 
     LaunchedEffect(mapRef, uiState.routeGeometryJson, uiState.gpsPoints) {
         val map = mapRef ?: return@LaunchedEffect
-        // The view model already excludes Outlier Points, so this is the walk's whole trace.
+        // The points arrive free of Outlier Points, so this is the walk's whole trace.
         val json =
             uiState.routeGeometryJson
                 ?: uiState.gpsPoints.takeIf { it.size >= 2 }
-                    ?.let { points -> TraceGeometry.lineStringFeature(points.map { LatLng(it.lat, it.lng) }) }
+                    ?.let { points -> TraceGeometry.lineStringFeature(points.map { it.toLatLng() }) }
                 ?: return@LaunchedEffect
         fitBoundsToGeometryJson(map, json)
     }

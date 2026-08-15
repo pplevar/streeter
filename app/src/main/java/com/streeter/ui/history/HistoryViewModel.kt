@@ -8,6 +8,7 @@ import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.Walk
+import com.streeter.domain.model.toLatLng
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.StreetRepository
@@ -110,9 +111,7 @@ class HistoryViewModel
                     if (segments.isNotEmpty()) {
                         TraceGeometry.parseOrEmpty(segments.first().geometryJson)
                     } else {
-                        gpsPointRepository.getPointsForWalk(walk.id)
-                            .filter { !it.isFiltered }
-                            .map { LatLng(it.lat, it.lng) }
+                        gpsPointRepository.getPointsForWalk(walk.id).map { it.toLatLng() }
                     }
             }
             _uiState.update { it.copy(routePointsByWalkId = routePoints) }

@@ -71,19 +71,15 @@ class WalkDetailViewModel
         /**
          * The walk's matched route, or its raw GPS Trace to draw when there is no route yet.
          *
-         * Outlier Points are dropped here, at the read, rather than by the screen: the trace the
-         * detail screen draws and the trace it measures are then the same set of points.
+         * The trace comes out of the repository already free of Outlier Points, so the screen has
+         * no filtering left to do — the trace it draws and the trace everything else measures are
+         * the same set of points (CONTEXT.md: excluded at the data seam, not per screen).
          */
         private fun loadRouteData() {
             viewModelScope.launch {
                 val segments = routeSegmentRepository.getSegmentsForWalk(walkId)
                 val geometry = segments.firstOrNull()?.geometryJson
-                val points =
-                    if (geometry == null) {
-                        gpsPointRepository.getPointsForWalk(walkId).filter { !it.isFiltered }
-                    } else {
-                        emptyList()
-                    }
+                val points = if (geometry == null) gpsPointRepository.getPointsForWalk(walkId) else emptyList()
                 _uiState.update { it.copy(routeGeometryJson = geometry, gpsPoints = points) }
             }
         }

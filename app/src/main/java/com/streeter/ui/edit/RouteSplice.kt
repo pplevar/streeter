@@ -21,6 +21,11 @@ object RouteSplice {
      * [previewJson]. Both anchor points are themselves replaced, and the anchors may be given in
      * either order.
      *
+     * The result is one line. A multi-line route is read whole rather than refused — the fix this
+     * ticket is after — and comes back joined, because the rest of the app still reads a walk's
+     * route as a single `Feature`: bounds fitting and the matched-distance sum would both stop
+     * understanding it as a collection until they move too (issue #58).
+     *
      * A route or a preview with no readable coordinates leaves nothing to splice into or with, so
      * the preview becomes the whole route — the same fallback the editor has always taken.
      */

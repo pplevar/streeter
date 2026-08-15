@@ -55,10 +55,16 @@ class SegmentMergeTest {
     }
 
     @Test
-    fun `keeps a single segment as it is`() {
+    fun `keeps a single segment's points as they are`() {
         val only = line(at(0.0, 0.0), at(0.0, 1.0))
 
-        assertEquals(only, SegmentMerge.merge(listOf(only)))
+        assertEquals(listOf(at(0.0, 0.0), at(0.0, 1.0)), TraceGeometry.parse(SegmentMerge.merge(listOf(only))))
+    }
+
+    /** One segment or many, a merge fails the same way — nothing slips through unread. */
+    @Test
+    fun `a malformed single segment fails the merge too`() {
+        assertThrows(MalformedGeometryException::class.java) { SegmentMerge.merge(listOf("not json")) }
     }
 
     @Test
@@ -68,7 +74,8 @@ class SegmentMergeTest {
 
     /**
      * The routing engine returns whatever shape the route needs. A multi-line segment used to
-     * merge to nothing usable; every coordinate of it now takes part.
+     * merge to nothing usable; every coordinate of it now takes part, in one line — see the
+     * contiguity note on [SegmentMerge.merge].
      */
     @Test
     fun `merges a multi-line segment`() {

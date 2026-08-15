@@ -9,7 +9,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
-import com.streeter.domain.model.LatLng
+import com.streeter.domain.model.toLatLng
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.service.LocationService
 import com.streeter.ui.map.WalkHistoryLoader
@@ -62,9 +62,7 @@ class RecordingViewModel
         val distanceM: StateFlow<Double> =
             _gpsPoints
                 .map { points ->
-                    TraceGeometry.lengthMeters(
-                        points.filter { !it.isFiltered }.map { LatLng(lat = it.lat, lng = it.lng) },
-                    )
+                    TraceGeometry.lengthMeters(points.filter { !it.isFiltered }.map { it.toLatLng() })
                 }
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0.0)
 
