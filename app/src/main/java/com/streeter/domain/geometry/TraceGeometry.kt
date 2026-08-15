@@ -58,25 +58,34 @@ object TraceGeometry {
     // --- Reading ---
 
     /**
-     * Coordinates of [geometryJson], in payload order.
+     * The separate lines of [geometryJson], in payload order.
      *
      * Accepts the shapes the app actually stores: a `Feature` wrapping a geometry, a bare
-     * geometry, a `FeatureCollection`, and `Point` / `MultiPoint` / `LineString` /
-     * `MultiLineString` geometries. A collection or a multi-line geometry flattens to one run
-     * of coordinates — the callers that consume a trace want the whole trace.
+     * geometry, a `FeatureCollection`, and `Point` / `LineString` / `MultiLineString`
+     * geometries. Each feature of a collection and each line of a multi-line geometry is its
+     * own run of coordinates, because the gap between two lines is not a leg anyone walked —
+     * see [lengthMeters].
      *
      * An empty geometry is empty, not malformed. Anything unreadable throws
-     * [MalformedGeometryException]; use [parseOrEmpty] where a screen would rather draw nothing.
+     * [MalformedGeometryException].
      */
-    fun parse(geometryJson: String): List<LatLng> {
+    fun parseLines(geometryJson: String): List<List<LatLng>> {
         val root =
             try {
                 json.parseToJsonElement(geometryJson)
             } catch (e: Exception) {
                 throw MalformedGeometryException("Geometry payload is not JSON", e)
             }
-        return coordinatesOf(root as? JsonObject ?: malformed("Geometry payload is not a JSON object"))
+        return linesOf(root as? JsonObject ?: malformed("Geometry payload is not a JSON object"))
     }
+
+    /**
+     * Every coordinate of [geometryJson] as one run, in payload order — for the callers that
+     * draw or bound a whole payload and do not care where one line ends and the next begins.
+     *
+     * Measuring is not one of those callers: use [parseLines] there.
+     */
+    fun parse(geometryJson: String): List<LatLng> = parseLines(geometryJson).flatten()
 
     /** [parse], with the empty list as the one shared fallback for a malformed payload. */
     fun parseOrEmpty(geometryJson: String): List<LatLng> =
@@ -86,24 +95,24 @@ object TraceGeometry {
             emptyList()
         }
 
-    private fun coordinatesOf(node: JsonObject): List<LatLng> =
-        when (node.string("type")) {
+    private fun linesOf(node: JsonObject): List<List<LatLng>> =
+        when (val type = node.string("type")) {
             "FeatureCollection" ->
                 node.array("features").flatMap { feature ->
-                    coordinatesOf(feature as? JsonObject ?: malformed("Feature is not a JSON object"))
+                    linesOf(feature as? JsonObject ?: malformed("Feature is not a JSON object"))
                 }
             "Feature" -> {
                 when (val geometry = node["geometry"]) {
                     null, JsonNull -> emptyList()
-                    is JsonObject -> coordinatesOf(geometry)
+                    is JsonObject -> linesOf(geometry)
                     else -> malformed("Feature geometry is not a JSON object")
                 }
             }
-            "Point" -> listOf(latLng(node.array("coordinates")))
-            "MultiPoint", "LineString" -> node.array("coordinates").map { latLng(it) }
-            "MultiLineString" -> node.array("coordinates").flatMap { line -> asArray(line).map { latLng(it) } }
+            "Point" -> listOf(listOf(latLng(node.array("coordinates"))))
+            "LineString" -> listOf(node.array("coordinates").map { latLng(it) })
+            "MultiLineString" -> node.array("coordinates").map { line -> asArray(line).map { latLng(it) } }
             null -> malformed("Geometry payload has no type")
-            else -> malformed("Unsupported geometry type ${node.string("type")}")
+            else -> malformed("Unsupported geometry type $type")
         }
 
     private fun JsonObject.string(key: String): String? = (this[key] as? JsonPrimitive)?.takeIf { it.isString }?.content
@@ -165,6 +174,14 @@ object TraceGeometry {
 
     /** Length of a trace along its legs, in metres. Fewer than two points is no length. */
     fun lengthMeters(points: List<LatLng>): Double = points.zipWithNext { a, b -> distanceMeters(a, b) }.sum()
+
+    /**
+     * Length of everything [geometryJson] holds, in metres.
+     *
+     * Each line is measured on its own, so the gap between two lines of a multi-line geometry —
+     * or between two features of a collection — is never counted as a leg.
+     */
+    fun lengthMeters(geometryJson: String): Double = parseLines(geometryJson).sumOf { lengthMeters(it) }
 
     private fun radians(degrees: Double): Double = degrees / 180.0 * PI
 

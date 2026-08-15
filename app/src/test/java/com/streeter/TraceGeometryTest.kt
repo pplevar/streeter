@@ -100,11 +100,42 @@ class TraceGeometryTest {
     }
 
     @Test
-    fun `parses a multi point geometry`() {
+    fun `parseLines keeps each line of a multi-line geometry apart`() {
+        val json = """{"type":"MultiLineString","coordinates":[[[1.0,2.0],[3.0,4.0]],[[5.0,6.0]]]}"""
+
         assertEquals(
-            listOf(LatLng(2.0, 1.0), LatLng(4.0, 3.0)),
-            TraceGeometry.parse("""{"type":"MultiPoint","coordinates":[[1.0,2.0],[3.0,4.0]]}"""),
+            listOf(
+                listOf(LatLng(2.0, 1.0), LatLng(4.0, 3.0)),
+                listOf(LatLng(6.0, 5.0)),
+            ),
+            TraceGeometry.parseLines(json),
         )
+    }
+
+    @Test
+    fun `parseLines keeps each feature of a collection apart`() {
+        val json =
+            """
+            {"type":"FeatureCollection","features":[
+              ${feature(lineString(1.0 to 2.0))},
+              ${feature(lineString(3.0 to 4.0, 5.0 to 6.0))}
+            ]}
+            """.trimIndent()
+
+        assertEquals(
+            listOf(
+                listOf(LatLng(2.0, 1.0)),
+                listOf(LatLng(4.0, 3.0), LatLng(6.0, 5.0)),
+            ),
+            TraceGeometry.parseLines(json),
+        )
+    }
+
+    @Test
+    fun `a geometry type this app never produces is malformed even where the nesting fits`() {
+        assertThrows(MalformedGeometryException::class.java) {
+            TraceGeometry.parse("""{"type":"MultiPoint","coordinates":[[1.0,2.0],[3.0,4.0]]}""")
+        }
     }
 
     @Test
@@ -249,9 +280,43 @@ class TraceGeometryTest {
 
     @Test
     fun `the length of a multi-line geometry counts every line`() {
-        val json = """{"type":"MultiLineString","coordinates":[[[4.89,52.37],[4.89,52.38]],[[4.89,52.38],[4.90,52.38]]]}"""
+        val first = listOf(LatLng(52.37, 4.89), LatLng(52.38, 4.89))
+        val second = listOf(LatLng(52.30, 4.95), LatLng(52.30, 4.96))
+        val json =
+            """{"type":"MultiLineString","coordinates":[[[4.89,52.37],[4.89,52.38]],[[4.95,52.30],[4.96,52.30]]]}"""
 
-        assertTrue(TraceGeometry.lengthMeters(TraceGeometry.parse(json)) > 1_000.0)
+        assertEquals(
+            TraceGeometry.lengthMeters(first) + TraceGeometry.lengthMeters(second),
+            TraceGeometry.lengthMeters(json),
+            1e-9,
+        )
+    }
+
+    @Test
+    fun `the gap between two lines is not a leg anyone walked`() {
+        val json =
+            """{"type":"MultiLineString","coordinates":[[[4.89,52.37],[4.89,52.38]],[[4.95,52.30],[4.96,52.30]]]}"""
+
+        // Flattening first would charge the trace for the jump from one line to the next.
+        assertTrue(TraceGeometry.lengthMeters(json) < TraceGeometry.lengthMeters(TraceGeometry.parse(json)))
+    }
+
+    @Test
+    fun `the length of a feature collection counts each walk on its own`() {
+        val json =
+            TraceGeometry.featureCollection(
+                listOf(
+                    listOf(LatLng(52.37, 4.89), LatLng(52.38, 4.89)),
+                    listOf(LatLng(52.30, 4.95), LatLng(52.30, 4.96)),
+                ),
+            )
+
+        assertEquals(
+            TraceGeometry.lengthMeters(listOf(LatLng(52.37, 4.89), LatLng(52.38, 4.89))) +
+                TraceGeometry.lengthMeters(listOf(LatLng(52.30, 4.95), LatLng(52.30, 4.96))),
+            TraceGeometry.lengthMeters(json),
+            1e-9,
+        )
     }
 
     // --- Bounds ---
