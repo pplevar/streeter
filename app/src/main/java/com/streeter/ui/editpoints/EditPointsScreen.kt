@@ -43,20 +43,6 @@ import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
 import kotlin.math.roundToInt
 
-private val SheetPeekHeight = 96.dp
-private val SheetExpandedHeightFraction = 0.55f
-private val SheetExpandedHeightMin = 280.dp
-private val SheetExpandedHeightMax = 480.dp
-
-/** Height the prev/delete/next pill and its padding claim above the sheet. */
-private val PillInset = 72.dp
-
-/** Height the top app bar claims; the status bar inset is added on top of it. */
-private val TopBarInset = 64.dp
-
-/** Breathing room kept between a revealed point and the edge of the uncovered map area. */
-private val RevealMargin = 24.dp
-
 /**
  * Pans the camera just enough to bring [point] into the uncovered map area, or leaves it
  * alone if it is already there. Zoom is never touched — selection highlights, it does not
@@ -81,12 +67,12 @@ private fun revealIfHidden(
             insets = insets,
             marginPx = marginPx,
         ) ?: return
-    // Moving the point by (dx, dy) on screen means moving the camera's centre by the opposite.
-    val newCentre =
-        map.projection.fromScreenLocation(
-            PointF(viewportWidthPx / 2f - pan.dxPx, viewportHeightPx / 2f - pan.dyPx),
-        )
-    map.animateCamera(CameraUpdateFactory.newLatLng(newCentre))
+    val centre = cameraCentreAfterPan(pan, viewportWidthPx, viewportHeightPx)
+    map.animateCamera(
+        CameraUpdateFactory.newLatLng(
+            map.projection.fromScreenLocation(PointF(centre.xPx, centre.yPx)),
+        ),
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -99,25 +85,23 @@ fun EditPointsScreen(
     var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
     val density = LocalDensity.current
     val configuration = LocalConfiguration.current
-    val sheetExpandedHeight =
-        (configuration.screenHeightDp.dp * SheetExpandedHeightFraction)
-            .coerceIn(SheetExpandedHeightMin, SheetExpandedHeightMax)
     val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-    val navBarInsetPx = with(density) { navBarInset.toPx() }
-    val sheetPeekPx = with(density) { SheetPeekHeight.toPx() }
-    val sheetExpandedPx = with(density) { sheetExpandedHeight.toPx() }
-    val sheetHeightPx = remember { Animatable(sheetExpandedPx) }
+    val sheet = sheetMetrics(screenHeight = configuration.screenHeightDp.dp, density = density)
+    val sheetHeightPx = remember { Animatable(sheet.expandedPx) }
     val scope = rememberCoroutineScope()
-    val sheetExpanded = sheetHeightPx.value > (sheetPeekPx + sheetExpandedPx) / 2f
+    val sheetExpanded = sheet.isExpanded(sheetHeightPx.value)
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(R.string.label_undo)
     val deletedMessage = stringResource(R.string.message_point_deleted)
     val listState = rememberLazyListState()
     var mapSizePx by remember { mutableStateOf(IntSize.Zero) }
-    val statusBarInsetPx = with(density) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() }
-    val topInsetPx = statusBarInsetPx + with(density) { TopBarInset.toPx() }
-    val pillInsetPx = with(density) { PillInset.toPx() }
-    val revealMarginPx = with(density) { RevealMargin.toPx() }
+    val mapInsets =
+        editorMapInsets(
+            statusBarPx = with(density) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() },
+            navigationBarPx = with(density) { navBarInset.toPx() },
+            density = density,
+        )
+    val revealMarginPx = with(density) { EditorChrome.RevealMargin.toPx() }
 
     fun exitEditor() {
         scope.launch {
@@ -129,7 +113,7 @@ fun EditPointsScreen(
     BackHandler(onBack = ::exitEditor)
 
     fun snapSheetTo(expanded: Boolean) {
-        scope.launch { sheetHeightPx.animateTo(if (expanded) sheetExpandedPx else sheetPeekPx) }
+        scope.launch { sheetHeightPx.animateTo(if (expanded) sheet.expandedPx else sheet.peekPx) }
     }
 
     /**
@@ -155,24 +139,16 @@ fun EditPointsScreen(
             point = point,
             viewportWidthPx = mapSizePx.width.toFloat(),
             viewportHeightPx = mapSizePx.height.toFloat(),
-            insets =
-                MapInsets(
-                    top = topInsetPx,
-                    // The sheet settles at peek on every selection, with the pill above it.
-                    bottom = sheetPeekPx + navBarInsetPx + pillInsetPx,
-                ),
+            insets = mapInsets,
             marginPx = revealMarginPx,
         )
     }
 
     // The list follows selections it did not make, and only when the row is genuinely off-view.
     LaunchedEffect(uiState.selectedPointId, uiState.selectionOrigin) {
-        if (uiState.selectionOrigin == SelectionOrigin.LIST) return@LaunchedEffect
-        val index = uiState.indexOf(uiState.selectedPointId) ?: return@LaunchedEffect
-        val visible = listState.layoutInfo.visibleItemsInfo
-        if (visible.none { it.index == index }) {
-            listState.animateScrollToItem(index)
-        }
+        val visibleRows = listState.layoutInfo.visibleItemsInfo.map { it.index }
+        val row = uiState.rowToScrollTo(visibleRows) ?: return@LaunchedEffect
+        listState.animateScrollToItem(row)
     }
 
     LaunchedEffect(Unit) {
@@ -206,6 +182,9 @@ fun EditPointsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent),
+                // The bar's height is the same value the camera's top inset is built from, so
+                // the two cannot drift apart (ADR-0007: chrome insets must be kept honest).
+                expandedHeight = EditorChrome.TopBarHeight,
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -245,7 +224,7 @@ fun EditPointsScreen(
                         onPrevious = viewModel::selectPrevious,
                         onNext = viewModel::selectNext,
                         onDelete = { uiState.selectedPoint?.let(viewModel::deletePoint) },
-                        modifier = Modifier.padding(bottom = 16.dp),
+                        modifier = Modifier.padding(bottom = EditorChrome.PillGap),
                     )
                 }
 
@@ -268,15 +247,13 @@ fun EditPointsScreen(
                             .clickable { snapSheetTo(expanded = !sheetExpanded) }
                             .pointerInput(Unit) {
                                 detectVerticalDragGestures(
-                                    onDragEnd = {
-                                        val expanded = sheetHeightPx.value > (sheetPeekPx + sheetExpandedPx) / 2f
-                                        snapSheetTo(expanded)
-                                    },
+                                    onDragEnd = { snapSheetTo(sheet.isExpanded(sheetHeightPx.value)) },
                                 ) { change, dragAmount ->
                                     change.consume()
                                     scope.launch {
                                         sheetHeightPx.snapTo(
-                                            (sheetHeightPx.value - dragAmount).coerceIn(sheetPeekPx, sheetExpandedPx),
+                                            (sheetHeightPx.value - dragAmount)
+                                                .coerceIn(sheet.peekPx, sheet.expandedPx),
                                         )
                                     }
                                 }
@@ -325,9 +302,8 @@ fun EditPointsScreen(
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(uiState.points, key = { it.id }) { point ->
-                            val index = uiState.points.indexOf(point)
                             PointRow(
-                                index = index,
+                                index = uiState.indexOf(point.id) ?: 0,
                                 point = point,
                                 selected = uiState.selectedPointId == point.id,
                                 canDelete = uiState.canDeleteMore,
@@ -357,23 +333,23 @@ private fun PointControlPill(
             modifier
                 .clip(RoundedCornerShape(28.dp))
                 .background(MaterialTheme.colorScheme.surface)
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = EditorChrome.PillPadding, vertical = EditorChrome.PillPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onPrevious, enabled = canGoPrevious) {
+        IconButton(onClick = onPrevious, enabled = canGoPrevious, modifier = Modifier.size(EditorChrome.PillButtonSize)) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = stringResource(R.string.label_previous_point),
             )
         }
-        IconButton(onClick = onDelete, enabled = canDelete) {
+        IconButton(onClick = onDelete, enabled = canDelete, modifier = Modifier.size(EditorChrome.PillButtonSize)) {
             Icon(
                 Icons.Default.Delete,
                 contentDescription = stringResource(R.string.label_delete),
                 tint = if (canDelete) MaterialTheme.colorScheme.error else LocalContentColor.current,
             )
         }
-        IconButton(onClick = onNext, enabled = canGoNext) {
+        IconButton(onClick = onNext, enabled = canGoNext, modifier = Modifier.size(EditorChrome.PillButtonSize)) {
             Icon(
                 Icons.AutoMirrored.Filled.ArrowForward,
                 contentDescription = stringResource(R.string.label_next_point),

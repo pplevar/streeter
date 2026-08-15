@@ -54,6 +54,17 @@ data class EditPointsUiState(
 
     /** Position of the point with [id] in [points], or null if it isn't present. */
     fun indexOf(id: Long?): Int? = points.indexOfFirst { it.id == id }.takeIf { it >= 0 }
+
+    /**
+     * The row the list should scroll to, given the rows it is currently showing, or null to
+     * hold still (ADR-0007). The list follows a selection only when the selected row is
+     * genuinely off-view, and never one the user made by tapping a row — a row must not shift
+     * under the finger that just tapped it.
+     */
+    fun rowToScrollTo(visibleRows: List<Int>): Int? {
+        if (selectionOrigin == SelectionOrigin.LIST) return null
+        return indexOf(selectedPointId)?.takeIf { it !in visibleRows }
+    }
 }
 
 @HiltViewModel
