@@ -558,6 +558,62 @@ class EditPointsViewModelTest {
             }
         }
 
+    // --- The list follows selections it did not make (ADR-0007) --------------------------
+
+    @Test
+    fun `the list does not scroll for a row the user just tapped`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.selectPoint(3L, SelectionOrigin.LIST)
+
+            assertNull(vm.uiState.value.rowToScrollTo(visibleRows = listOf(0, 1)))
+        }
+
+    @Test
+    fun `the list scrolls to a map selection whose row is off-view`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.selectPoint(3L, SelectionOrigin.MAP)
+
+            assertEquals(2, vm.uiState.value.rowToScrollTo(visibleRows = listOf(0, 1)))
+        }
+
+    @Test
+    fun `the list holds still for a selection whose row is already on-view`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.selectPoint(2L, SelectionOrigin.MAP)
+
+            assertNull(vm.uiState.value.rowToScrollTo(visibleRows = listOf(0, 1, 2)))
+        }
+
+    @Test
+    fun `stepping off the visible run scrolls the list along with it`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.MAP)
+
+            vm.selectNext()
+
+            assertEquals(2, vm.uiState.value.rowToScrollTo(visibleRows = listOf(0, 1)))
+        }
+
+    @Test
+    fun `an empty selection asks for no scroll`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertNull(vm.uiState.value.rowToScrollTo(visibleRows = emptyList()))
+        }
+
     @Test
     fun `dismissing the floor message clears it`() =
         runTest {
