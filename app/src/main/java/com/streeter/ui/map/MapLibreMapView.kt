@@ -44,6 +44,8 @@ val MAP_STYLE_URL =
 
 private const val GPS_ROUTE_SOURCE = "gps_route_source"
 private const val GPS_ROUTE_LAYER = "gps_route_layer"
+private const val HISTORY_SOURCE = "history_source"
+private const val HISTORY_LAYER = "history_layer"
 private const val POSITION_SOURCE = "position_source"
 private const val POSITION_LAYER = "position_layer"
 private const val ROUTE_JSON_SOURCE = "route_json_source"
@@ -62,6 +64,7 @@ fun MapLibreMapView(
     gpsPoints: List<GpsPoint> = emptyList(),
     routeGeometryJson: String? = null,
     previewGeometryJson: String? = null,
+    historyGeometryJson: String? = null,
     selectedPoint: GpsPoint? = null,
     followLocation: Boolean = false,
     showCurrentPosition: Boolean = false,
@@ -78,6 +81,7 @@ fun MapLibreMapView(
     val latestGpsPoints = rememberUpdatedState(gpsPoints)
     val latestRouteJson = rememberUpdatedState(routeGeometryJson)
     val latestPreviewJson = rememberUpdatedState(previewGeometryJson)
+    val latestHistoryJson = rememberUpdatedState(historyGeometryJson)
     val latestSelectedPoint = rememberUpdatedState(selectedPoint)
     val latestFollowLocation = rememberUpdatedState(followLocation)
     val latestOnCameraMove = rememberUpdatedState(onCameraMove)
@@ -132,6 +136,7 @@ fun MapLibreMapView(
                         updateRouteLayer(map, latestGpsPoints.value)
                         updateRouteJsonLayer(map, latestRouteJson.value)
                         updatePreviewLayer(map, latestPreviewJson.value)
+                        updateHistoryLayer(map, latestHistoryJson.value)
                         updateSelectedPointLayer(map, latestSelectedPoint.value)
                         // Center on initial position when no route is loaded yet.
                         if (initialLatLng != null && latestGpsPoints.value.isEmpty()) {
@@ -167,6 +172,7 @@ fun MapLibreMapView(
             updateRouteLayer(map, gpsPoints)
             updateRouteJsonLayer(map, routeGeometryJson)
             updatePreviewLayer(map, previewGeometryJson)
+            updateHistoryLayer(map, historyGeometryJson)
             updateSelectedPointLayer(map, selectedPoint)
             if (showCurrentPosition) {
                 updatePositionLayer(map, gpsPoints)
@@ -196,6 +202,19 @@ private fun setupRouteLayers(style: Style) {
                 lineCap("round"),
                 lineJoin("round"),
             ),
+        )
+        // Past walks sit below the live route: subordinate colour, and never over the
+        // current trace where the two overlap.
+        style.addSource(GeoJsonSource(HISTORY_SOURCE))
+        style.addLayerBelow(
+            LineLayer(HISTORY_LAYER, HISTORY_SOURCE).withProperties(
+                lineColor("#64748B"),
+                lineWidth(3f),
+                lineOpacity(0.5f),
+                lineCap("round"),
+                lineJoin("round"),
+            ),
+            GPS_ROUTE_LAYER,
         )
         style.addSource(GeoJsonSource(POSITION_SOURCE))
         style.addLayer(
@@ -292,6 +311,15 @@ private fun updatePreviewLayer(
     source.setGeoJson(
         geojson ?: """{"type":"FeatureCollection","features":[]}""",
     )
+}
+
+private fun updateHistoryLayer(
+    map: MapLibreMap,
+    geojson: String?,
+) {
+    val style = map.style ?: return
+    val source = style.getSourceAs<GeoJsonSource>(HISTORY_SOURCE) ?: return
+    source.setGeoJson(geojson ?: EMPTY_FEATURE_COLLECTION)
 }
 
 private fun updateSelectedPointLayer(
