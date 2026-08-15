@@ -75,6 +75,8 @@ fun EditPointsScreen(
     val sheetExpandedHeight =
         (configuration.screenHeightDp.dp * SheetExpandedHeightFraction)
             .coerceIn(SheetExpandedHeightMin, SheetExpandedHeightMax)
+    val navBarInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val navBarInsetPx = with(density) { navBarInset.toPx() }
     val sheetPeekPx = with(density) { SheetPeekHeight.toPx() }
     val sheetExpandedPx = with(density) { sheetExpandedHeight.toPx() }
     val sheetHeightPx = remember { Animatable(sheetExpandedPx) }
@@ -103,7 +105,7 @@ fun EditPointsScreen(
     }
 
     LaunchedEffect(uiState.selectedPointId, mapRef) {
-        uiState.selectedPoint?.let { centerOn(mapRef, it, sheetPeekPx) }
+        uiState.selectedPoint?.let { centerOn(mapRef, it, sheetPeekPx + navBarInsetPx) }
     }
 
     LaunchedEffect(Unit) {
@@ -140,7 +142,7 @@ fun EditPointsScreen(
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
-    ) { padding ->
+    ) { _ ->
         Box(Modifier.fillMaxSize()) {
             MapLibreMapView(
                 modifier = Modifier.fillMaxSize(),
@@ -173,8 +175,10 @@ fun EditPointsScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(padding)
-                            .height(with(density) { sheetHeightPx.value.toDp() })
+                            // The sheet paints under the navigation bar: its height is the
+                            // content height plus the inset, so the bar sits on the sheet's
+                            // own surface rather than on live map content.
+                            .height(with(density) { sheetHeightPx.value.toDp() } + navBarInset)
                             .clip(RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp))
                             .background(MaterialTheme.colorScheme.surface)
                             .padding(top = 8.dp),
@@ -232,7 +236,13 @@ fun EditPointsScreen(
                     }
                     LazyColumn(
                         modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
+                        contentPadding =
+                            PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 2.dp,
+                                bottom = 2.dp + navBarInset,
+                            ),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         items(uiState.points, key = { it.id }) { point ->
