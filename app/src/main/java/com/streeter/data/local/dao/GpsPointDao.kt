@@ -48,8 +48,13 @@ interface GpsPointDao {
         pointId: Long,
     )
 
-    @Query("SELECT COUNT(*) FROM gps_points WHERE walkId = :walkId")
-    suspend fun countForWalk(walkId: Long): Int
+    /**
+     * A walk's usable point count — outlier-filtered points are excluded. This is the set
+     * Calculation consumes and the set the points editor shows, so the minimum-points floor
+     * is computed over the same points the user can see and act on.
+     */
+    @Query("SELECT COUNT(*) FROM gps_points WHERE walkId = :walkId AND isFiltered = 0")
+    suspend fun countUnfilteredForWalk(walkId: Long): Int
 
     /** Deletes [pointId] and reports the remaining count atomically, so no writer can race between the two. */
     @Transaction
@@ -58,6 +63,6 @@ interface GpsPointDao {
         pointId: Long,
     ): Int {
         deleteById(walkId, pointId)
-        return countForWalk(walkId)
+        return countUnfilteredForWalk(walkId)
     }
 }

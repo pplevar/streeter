@@ -12,6 +12,10 @@ _Avoid_: trip, route (a walk *has* a route; it is not one).
 The ordered series of raw GPS observations belonging to a Recorded Walk. The trace, together with walk metadata, is the only walk data that is synchronized to the server.
 _Avoid_: track, path.
 
+**Outlier Point**:
+A GPS observation the outlier filter rejected as implausible. It stays stored, but it is not part of the walk's GPS Trace for any purpose: it is not drawn, not fed to Calculation, not sent by Sync, and not shown in the points editor — so the user can neither step onto it nor delete it. Filtering happens once, at recording time, and is never undone.
+_Avoid_: bad point, spike, noise.
+
 **Sync**:
 Pushing a walk's metadata and GPS Trace to the server (and pulling other devices' walks back). Sync is the mechanism that makes a walk durable and shareable across devices. The server is authoritative **only** for metadata and the GPS Trace — never for anything derived.
 _Avoid_: upload, backup.
@@ -42,6 +46,8 @@ A street is a named road derived from OpenStreetMap data; a section is one span 
 - The server owns **Walk metadata + GPS Trace**. Other devices reference walks by a server-assigned id.
 - Each device owns its own **Calculation** results (Map Matching + Coverage). These are local projections of the synced trace and are recomputed independently per device.
 - Because Calculation is local and reproducible, **Sync never waits for Calculation**, and a freshly-synced walk on another device shows an estimated distance until that device recomputes.
+- **Outlier Points are excluded at the data seam**, not per screen: every read that backs a trace — drawing, Calculation, Sync, the points editor's list and its minimum-points floor — is over the same non-Outlier set, so counts on screen always match rows on screen.
+- **Selecting a point never navigates the map**; the camera moves only to reveal a selection the user could not otherwise see, and never changes zoom. See ADR 0007.
 - The recording screen's past-walks layer draws **GPS Traces, not Coverage** — so it appears the moment a walk ends, but drifts off-street and will not agree with the app's Coverage numbers. Deliberate; see ADR 0006.
 
 ## Example dialogue

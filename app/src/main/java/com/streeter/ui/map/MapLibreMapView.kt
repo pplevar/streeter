@@ -1,9 +1,13 @@
 package com.streeter.ui.map
 
+import android.graphics.PointF
+import android.graphics.RectF
 import android.view.ViewGroup
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -52,6 +56,12 @@ private const val ROUTE_JSON_SOURCE = "route_json_source"
 private const val ROUTE_JSON_LAYER = "route_json_layer"
 private const val PREVIEW_SOURCE = "preview_source"
 private const val PREVIEW_LAYER = "preview_layer"
+private const val POINT_DOTS_SOURCE = "point_dots_source"
+private const val POINT_DOTS_LAYER = "point_dots_layer"
+private const val POINT_ID_PROPERTY = "pointId"
+
+/** Half-width of the hit-test box around a tap — a fingertip's worth of slack around a dot. */
+private val TAP_RADIUS = 20.dp
 private const val SELECTED_POINT_SOURCE = "selected_point_source"
 private const val SELECTED_POINT_HALO_LAYER = "selected_point_halo_layer"
 private const val SELECTED_POINT_LAYER = "selected_point_layer"
@@ -66,6 +76,10 @@ fun MapLibreMapView(
     previewGeometryJson: String? = null,
     historyGeometryJson: String? = null,
     selectedPoint: GpsPoint? = null,
+    /** Draws every entry of [gpsPoints] as a tappable dot over the trace. */
+    showPointDots: Boolean = false,
+    /** Called with the tapped point's id, or null when the tap hit no dot. */
+    onPointTap: ((Long?) -> Unit)? = null,
     followLocation: Boolean = false,
     showCurrentPosition: Boolean = false,
     initialLatLng: LatLng? = null,
@@ -83,8 +97,11 @@ fun MapLibreMapView(
     val latestPreviewJson = rememberUpdatedState(previewGeometryJson)
     val latestHistoryJson = rememberUpdatedState(historyGeometryJson)
     val latestSelectedPoint = rememberUpdatedState(selectedPoint)
+    val latestShowPointDots = rememberUpdatedState(showPointDots)
+    val latestOnPointTap = rememberUpdatedState(onPointTap)
     val latestFollowLocation = rememberUpdatedState(followLocation)
     val latestOnCameraMove = rememberUpdatedState(onCameraMove)
+    val tapRadiusPx = with(LocalDensity.current) { TAP_RADIUS.toPx() }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -137,6 +154,7 @@ fun MapLibreMapView(
                         updateRouteJsonLayer(map, latestRouteJson.value)
                         updatePreviewLayer(map, latestPreviewJson.value)
                         updateHistoryLayer(map, latestHistoryJson.value)
+                        updatePointDotsLayer(map, latestGpsPoints.value, latestShowPointDots.value)
                         updateSelectedPointLayer(map, latestSelectedPoint.value)
                         // Center on initial position when no route is loaded yet.
                         if (initialLatLng != null && latestGpsPoints.value.isEmpty()) {
@@ -153,9 +171,12 @@ fun MapLibreMapView(
                         map.cameraPosition.target?.let { latestOnCameraMove.value?.invoke(it) }
                         onMapReady(map)
                     }
-                    onMapClick?.let { callback ->
+                    if (onMapClick != null || onPointTap != null) {
                         map.addOnMapClickListener { latLng ->
-                            callback(latLng)
+                            latestOnPointTap.value?.invoke(
+                                pointIdAt(map, map.projection.toScreenLocation(latLng), tapRadiusPx),
+                            )
+                            onMapClick?.invoke(latLng)
                             true
                         }
                     }
@@ -173,6 +194,7 @@ fun MapLibreMapView(
             updateRouteJsonLayer(map, routeGeometryJson)
             updatePreviewLayer(map, previewGeometryJson)
             updateHistoryLayer(map, historyGeometryJson)
+            updatePointDotsLayer(map, gpsPoints, showPointDots)
             updateSelectedPointLayer(map, selectedPoint)
             if (showCurrentPosition) {
                 updatePositionLayer(map, gpsPoints)
@@ -241,6 +263,17 @@ private fun setupRouteLayers(style: Style) {
                 lineWidth(4f),
                 lineCap("round"),
                 lineJoin("round"),
+            ),
+        )
+        // One tappable dot per trace point, drawn over the trace and under the selected-point
+        // marker. Fixed radius at every zoom: what the user can see is always what they can tap.
+        style.addSource(GeoJsonSource(POINT_DOTS_SOURCE))
+        style.addLayer(
+            CircleLayer(POINT_DOTS_LAYER, POINT_DOTS_SOURCE).withProperties(
+                circleColor("#1D4ED8"),
+                circleRadius(5f),
+                circleStrokeColor("#FFFFFF"),
+                circleStrokeWidth(1.5f),
             ),
         )
         style.addSource(GeoJsonSource(SELECTED_POINT_SOURCE))
@@ -320,6 +353,51 @@ private fun updateHistoryLayer(
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(HISTORY_SOURCE) ?: return
     source.setGeoJson(geojson ?: EMPTY_FEATURE_COLLECTION)
+}
+
+private fun updatePointDotsLayer(
+    map: MapLibreMap,
+    points: List<GpsPoint>,
+    enabled: Boolean,
+) {
+    val style = map.style ?: return
+    val source = style.getSourceAs<GeoJsonSource>(POINT_DOTS_SOURCE) ?: return
+    if (!enabled) {
+        source.setGeoJson(EMPTY_FEATURE_COLLECTION)
+        return
+    }
+    // Each dot carries its point id, so a tap can be answered with an id rather than a
+    // coordinate the caller would have to match back to a point itself.
+    val features =
+        points.joinToString(",") {
+            """{"type":"Feature","geometry":{"type":"Point","coordinates":[${it.lng},${it.lat}]},""" +
+                """"properties":{"$POINT_ID_PROPERTY":${it.id}}}"""
+        }
+    source.setGeoJson("""{"type":"FeatureCollection","features":[$features]}""")
+}
+
+/**
+ * The id of the point drawn nearest [screenPoint], or null if the tap missed every dot.
+ * Hit-testing asks the renderer what it actually drew in a [tapRadiusPx] box around the tap,
+ * so the touch target matches the dots on screen at any zoom without bespoke distance maths.
+ */
+private fun pointIdAt(
+    map: MapLibreMap,
+    screenPoint: PointF,
+    tapRadiusPx: Float,
+): Long? {
+    val box =
+        RectF(
+            screenPoint.x - tapRadiusPx,
+            screenPoint.y - tapRadiusPx,
+            screenPoint.x + tapRadiusPx,
+            screenPoint.y + tapRadiusPx,
+        )
+    return map
+        .queryRenderedFeatures(box, POINT_DOTS_LAYER)
+        .firstOrNull()
+        ?.getNumberProperty(POINT_ID_PROPERTY)
+        ?.toLong()
 }
 
 private fun updateSelectedPointLayer(

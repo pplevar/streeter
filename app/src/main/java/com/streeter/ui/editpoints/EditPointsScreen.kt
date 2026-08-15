@@ -1,5 +1,6 @@
 package com.streeter.ui.editpoints
 
+import android.graphics.PointF
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
@@ -8,6 +9,7 @@ import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,10 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -34,7 +38,6 @@ import com.streeter.ui.map.MAP_STYLE_URL
 import com.streeter.ui.map.MapLibreMapView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
@@ -45,21 +48,45 @@ private val SheetExpandedHeightFraction = 0.55f
 private val SheetExpandedHeightMin = 280.dp
 private val SheetExpandedHeightMax = 480.dp
 
-private fun centerOn(
-    map: MapLibreMap?,
+/** Height the prev/delete/next pill and its padding claim above the sheet. */
+private val PillInset = 72.dp
+
+/** Height the top app bar claims; the status bar inset is added on top of it. */
+private val TopBarInset = 64.dp
+
+/** Breathing room kept between a revealed point and the edge of the uncovered map area. */
+private val RevealMargin = 24.dp
+
+/**
+ * Pans the camera just enough to bring [point] into the uncovered map area, or leaves it
+ * alone if it is already there. Zoom is never touched — selection highlights, it does not
+ * navigate (ADR 0007).
+ */
+private fun revealIfHidden(
+    map: MapLibreMap,
     point: GpsPoint,
-    bottomPaddingPx: Float,
+    viewportWidthPx: Float,
+    viewportHeightPx: Float,
+    insets: MapInsets,
+    marginPx: Float,
 ) {
-    map ?: return
-    map.animateCamera(
-        CameraUpdateFactory.newCameraPosition(
-            CameraPosition.Builder()
-                .target(LatLng(point.lat, point.lng))
-                .zoom(17.5)
-                .padding(0.0, 0.0, 0.0, bottomPaddingPx.toDouble())
-                .build(),
-        ),
-    )
+    if (viewportWidthPx <= 0f || viewportHeightPx <= 0f) return
+    val screen = map.projection.toScreenLocation(LatLng(point.lat, point.lng))
+    val pan =
+        panToReveal(
+            pointXPx = screen.x,
+            pointYPx = screen.y,
+            viewportWidthPx = viewportWidthPx,
+            viewportHeightPx = viewportHeightPx,
+            insets = insets,
+            marginPx = marginPx,
+        ) ?: return
+    // Moving the point by (dx, dy) on screen means moving the camera's centre by the opposite.
+    val newCentre =
+        map.projection.fromScreenLocation(
+            PointF(viewportWidthPx / 2f - pan.dxPx, viewportHeightPx / 2f - pan.dyPx),
+        )
+    map.animateCamera(CameraUpdateFactory.newLatLng(newCentre))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,6 +112,12 @@ fun EditPointsScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val undoLabel = stringResource(R.string.label_undo)
     val deletedMessage = stringResource(R.string.message_point_deleted)
+    val listState = rememberLazyListState()
+    var mapSizePx by remember { mutableStateOf(IntSize.Zero) }
+    val statusBarInsetPx = with(density) { WindowInsets.statusBars.asPaddingValues().calculateTopPadding().toPx() }
+    val topInsetPx = statusBarInsetPx + with(density) { TopBarInset.toPx() }
+    val pillInsetPx = with(density) { PillInset.toPx() }
+    val revealMarginPx = with(density) { RevealMargin.toPx() }
 
     fun exitEditor() {
         scope.launch {
@@ -99,13 +132,47 @@ fun EditPointsScreen(
         scope.launch { sheetHeightPx.animateTo(if (expanded) sheetExpandedPx else sheetPeekPx) }
     }
 
-    fun selectAndPeek(point: GpsPoint) {
-        viewModel.selectPoint(point.id)
+    /**
+     * The single path from "a point was chosen" to "the point is selected and actionable":
+     * the sheet drops to peek so the prev/delete/next pill is in reach. Shared by list clicks
+     * and map taps, so map-driven deletion runs through the existing delete flow untouched.
+     */
+    fun selectAndPeek(
+        pointId: Long,
+        origin: SelectionOrigin,
+    ) {
+        viewModel.selectPoint(pointId, origin)
         snapSheetTo(expanded = false)
     }
 
-    LaunchedEffect(uiState.selectedPointId, mapRef) {
-        uiState.selectedPoint?.let { centerOn(mapRef, it, sheetPeekPx + navBarInsetPx) }
+    // One camera rule for every selection, whatever changed it: move only to make a point the
+    // user cannot see visible, and never change their zoom.
+    LaunchedEffect(uiState.selectedPointId, mapRef, mapSizePx) {
+        val map = mapRef ?: return@LaunchedEffect
+        val point = uiState.selectedPoint ?: return@LaunchedEffect
+        revealIfHidden(
+            map = map,
+            point = point,
+            viewportWidthPx = mapSizePx.width.toFloat(),
+            viewportHeightPx = mapSizePx.height.toFloat(),
+            insets =
+                MapInsets(
+                    top = topInsetPx,
+                    // The sheet settles at peek on every selection, with the pill above it.
+                    bottom = sheetPeekPx + navBarInsetPx + pillInsetPx,
+                ),
+            marginPx = revealMarginPx,
+        )
+    }
+
+    // The list follows selections it did not make, and only when the row is genuinely off-view.
+    LaunchedEffect(uiState.selectedPointId, uiState.selectionOrigin) {
+        if (uiState.selectionOrigin == SelectionOrigin.LIST) return@LaunchedEffect
+        val index = uiState.indexOf(uiState.selectedPointId) ?: return@LaunchedEffect
+        val visible = listState.layoutInfo.visibleItemsInfo
+        if (visible.none { it.index == index }) {
+            listState.animateScrollToItem(index)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -145,10 +212,21 @@ fun EditPointsScreen(
     ) { _ ->
         Box(Modifier.fillMaxSize()) {
             MapLibreMapView(
-                modifier = Modifier.fillMaxSize(),
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .onSizeChanged { mapSizePx = it },
                 styleUrl = MAP_STYLE_URL,
                 gpsPoints = uiState.points,
                 selectedPoint = uiState.selectedPoint,
+                showPointDots = true,
+                onPointTap = { pointId ->
+                    if (pointId == null) {
+                        viewModel.clearSelection()
+                    } else {
+                        selectAndPeek(pointId, SelectionOrigin.MAP)
+                    }
+                },
                 onMapReady = { mapRef = it },
             )
 
@@ -235,6 +313,7 @@ fun EditPointsScreen(
                         )
                     }
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier.weight(1f),
                         contentPadding =
                             PaddingValues(
@@ -252,7 +331,7 @@ fun EditPointsScreen(
                                 point = point,
                                 selected = uiState.selectedPointId == point.id,
                                 canDelete = uiState.canDeleteMore,
-                                onClick = { selectAndPeek(point) },
+                                onClick = { selectAndPeek(point.id, SelectionOrigin.LIST) },
                                 onDelete = { viewModel.deletePoint(point) },
                             )
                         }

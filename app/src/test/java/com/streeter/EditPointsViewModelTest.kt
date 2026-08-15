@@ -9,6 +9,7 @@ import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.ui.editpoints.EditPointsViewModel
 import com.streeter.ui.editpoints.PendingUndo
+import com.streeter.ui.editpoints.SelectionOrigin
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -31,10 +32,12 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * Behavioral spec for [EditPointsViewModel] (issues #37, #38).
+ * Behavioral spec for [EditPointsViewModel] (issues #37, #38, #49).
  *
  * Covers browsing/selecting a walk's GPS points, plus swipe-to-delete with undo and the
- * 2-point floor that blocks further deletion.
+ * 2-point floor that blocks further deletion. The editor works over the trace's non-Outlier
+ * points only, and every selection carries the origin the list needs to decide whether to
+ * scroll itself.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class EditPointsViewModelTest {
@@ -50,17 +53,19 @@ class EditPointsViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun point(id: Long) =
-        GpsPoint(
-            id = id,
-            walkId = 1L,
-            lat = id.toDouble(),
-            lng = id.toDouble(),
-            timestamp = id,
-            accuracyM = 5f,
-            speedKmh = 0f,
-            isFiltered = false,
-        )
+    private fun point(
+        id: Long,
+        isFiltered: Boolean = false,
+    ) = GpsPoint(
+        id = id,
+        walkId = 1L,
+        lat = id.toDouble(),
+        lng = id.toDouble(),
+        timestamp = id,
+        accuracyM = 5f,
+        speedKmh = 0f,
+        isFiltered = isFiltered,
+    )
 
     /** In-memory, stateful [GpsPointRepository] so delete/undo round-trips are observable. */
     private class FakeGpsPointRepository(
@@ -80,8 +85,9 @@ class EditPointsViewModelTest {
 
         override suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint> = state.value.filter { it.walkId == walkId }
 
+        // Mirrors the real seam: Outlier Points never reach the editor.
         override fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>> =
-            state.asStateFlow().map { list -> list.filter { it.walkId == walkId } }
+            state.asStateFlow().map { list -> list.filter { it.walkId == walkId && !it.isFiltered } }
 
         override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint> = emptyList()
 
@@ -95,7 +101,7 @@ class EditPointsViewModelTest {
             pointId: Long,
         ): Int {
             state.update { current -> current.filterNot { it.walkId == walkId && it.id == pointId } }
-            return state.value.count { it.walkId == walkId }
+            return state.value.count { it.walkId == walkId && !it.isFiltered }
         }
     }
 
@@ -168,7 +174,7 @@ class EditPointsViewModelTest {
             val vm = viewModel(listOf(point(1), point(2)))
             dispatcher.scheduler.advanceUntilIdle()
 
-            vm.selectPoint(2L)
+            vm.selectPoint(2L, SelectionOrigin.LIST)
 
             assertEquals(2L, vm.uiState.value.selectedPointId)
         }
@@ -179,8 +185,8 @@ class EditPointsViewModelTest {
             val vm = viewModel(listOf(point(1)))
             dispatcher.scheduler.advanceUntilIdle()
 
-            vm.selectPoint(1L)
-            vm.selectPoint(1L)
+            vm.selectPoint(1L, SelectionOrigin.LIST)
+            vm.selectPoint(1L, SelectionOrigin.LIST)
 
             assertEquals(1L, vm.uiState.value.selectedPointId)
         }
@@ -231,7 +237,7 @@ class EditPointsViewModelTest {
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
             dispatcher.scheduler.advanceUntilIdle()
-            vm.selectPoint(2L)
+            vm.selectPoint(2L, SelectionOrigin.LIST)
 
             vm.deletePoint(point(2))
             dispatcher.scheduler.advanceUntilIdle()
@@ -244,7 +250,7 @@ class EditPointsViewModelTest {
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
             dispatcher.scheduler.advanceUntilIdle()
-            vm.selectPoint(3L)
+            vm.selectPoint(3L, SelectionOrigin.LIST)
 
             vm.deletePoint(point(3))
             dispatcher.scheduler.advanceUntilIdle()
@@ -257,7 +263,7 @@ class EditPointsViewModelTest {
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
             dispatcher.scheduler.advanceUntilIdle()
-            vm.selectPoint(1L)
+            vm.selectPoint(1L, SelectionOrigin.LIST)
 
             vm.deletePoint(point(3))
             dispatcher.scheduler.advanceUntilIdle()
@@ -270,7 +276,7 @@ class EditPointsViewModelTest {
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
             dispatcher.scheduler.advanceUntilIdle()
-            vm.selectPoint(3L)
+            vm.selectPoint(3L, SelectionOrigin.LIST)
 
             vm.selectPrevious()
             assertEquals(2L, vm.uiState.value.selectedPointId)
@@ -287,7 +293,7 @@ class EditPointsViewModelTest {
         runTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
             dispatcher.scheduler.advanceUntilIdle()
-            vm.selectPoint(1L)
+            vm.selectPoint(1L, SelectionOrigin.LIST)
 
             vm.selectNext()
             assertEquals(2L, vm.uiState.value.selectedPointId)
@@ -305,15 +311,15 @@ class EditPointsViewModelTest {
             val vm = viewModel(listOf(point(1), point(2), point(3)))
             dispatcher.scheduler.advanceUntilIdle()
 
-            vm.selectPoint(1L)
+            vm.selectPoint(1L, SelectionOrigin.LIST)
             assertFalse(vm.uiState.value.canGoPrevious)
             assertTrue(vm.uiState.value.canGoNext)
 
-            vm.selectPoint(2L)
+            vm.selectPoint(2L, SelectionOrigin.LIST)
             assertTrue(vm.uiState.value.canGoPrevious)
             assertTrue(vm.uiState.value.canGoNext)
 
-            vm.selectPoint(3L)
+            vm.selectPoint(3L, SelectionOrigin.LIST)
             assertTrue(vm.uiState.value.canGoPrevious)
             assertFalse(vm.uiState.value.canGoNext)
         }
@@ -417,6 +423,134 @@ class EditPointsViewModelTest {
 
             assertEquals(WalkStatus.PENDING_MATCH, walkRepository.getWalkById(1L)?.status)
             assertEquals(listOf(1L), scheduler.calculationEnqueued)
+        }
+
+    @Test
+    fun `Outlier Points are absent from the list the editor shows`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2, isFiltered = true), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(listOf(point(1), point(3)), vm.uiState.value.points)
+        }
+
+    @Test
+    fun `stepping with next skips over an Outlier Point`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2, isFiltered = true), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(1L, SelectionOrigin.LIST)
+
+            vm.selectNext()
+
+            assertEquals(3L, vm.uiState.value.selectedPointId)
+        }
+
+    @Test
+    fun `the ends of the trace are the ends of the non-Outlier points`() =
+        runTest {
+            val vm = viewModel(listOf(point(1, isFiltered = true), point(2), point(3), point(4, isFiltered = true)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            assertFalse(vm.uiState.value.canGoPrevious)
+
+            vm.selectPoint(3L, SelectionOrigin.LIST)
+            assertFalse(vm.uiState.value.canGoNext)
+        }
+
+    @Test
+    fun `the floor counts only the points the editor shows`() =
+        runTest {
+            // Five stored rows, but only three the user can see — deletion is still allowed.
+            val vm = viewModel(listOf(point(1), point(2, isFiltered = true), point(3), point(4, isFiltered = true), point(5)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.canDeleteMore)
+
+            vm.deletePoint(point(5))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(listOf(point(1), point(3)), vm.uiState.value.points)
+            assertFalse(vm.uiState.value.canDeleteMore)
+        }
+
+    @Test
+    fun `a selection made from the list records the list as its origin`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+
+            assertEquals(SelectionOrigin.LIST, vm.uiState.value.selectionOrigin)
+        }
+
+    @Test
+    fun `a selection made on the map records the map as its origin`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.selectPoint(2L, SelectionOrigin.MAP)
+
+            assertEquals(SelectionOrigin.MAP, vm.uiState.value.selectionOrigin)
+        }
+
+    @Test
+    fun `stepping records the step as the origin, whatever selected the point before`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(1L, SelectionOrigin.LIST)
+
+            vm.selectNext()
+            assertEquals(SelectionOrigin.STEP, vm.uiState.value.selectionOrigin)
+
+            vm.selectPrevious()
+            assertEquals(SelectionOrigin.STEP, vm.uiState.value.selectionOrigin)
+        }
+
+    @Test
+    fun `the selection that auto-advances after a deletion has the step origin`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+
+            vm.deletePoint(point(2))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(SelectionOrigin.STEP, vm.uiState.value.selectionOrigin)
+        }
+
+    @Test
+    fun `clearing the selection drops both the point and its origin`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.MAP)
+
+            vm.clearSelection()
+
+            assertNull(vm.uiState.value.selectedPointId)
+            assertNull(vm.uiState.value.selectionOrigin)
+        }
+
+    @Test
+    fun `an undone deletion restores the point to its place in the trace`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            withUndoEvents(vm) { undoEvents ->
+                dispatcher.scheduler.advanceUntilIdle()
+                vm.deletePoint(point(2))
+                dispatcher.scheduler.advanceUntilIdle()
+
+                vm.undoDelete(undoEvents.single())
+                dispatcher.scheduler.advanceUntilIdle()
+
+                assertEquals(listOf(1L, 2L, 3L), vm.uiState.value.points.map { it.id })
+            }
         }
 
     @Test

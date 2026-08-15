@@ -26,9 +26,25 @@ data class PendingUndo(
     val point: GpsPoint,
 )
 
+/**
+ * Where the current selection came from. The list scrolls the selected row into view for
+ * every origin but [LIST] — a row the user just tapped must not shift under their finger.
+ */
+enum class SelectionOrigin {
+    /** The user clicked the point's row in the list. */
+    LIST,
+
+    /** The user tapped the point on the map. */
+    MAP,
+
+    /** Prev/next stepping, or the auto-advance that follows a deletion. */
+    STEP,
+}
+
 data class EditPointsUiState(
     val points: List<GpsPoint> = emptyList(),
     val selectedPointId: Long? = null,
+    val selectionOrigin: SelectionOrigin? = null,
     val isLoading: Boolean = true,
     val minPointsMessage: Boolean = false,
 ) {
@@ -74,8 +90,20 @@ class EditPointsViewModel
             }
         }
 
-        fun selectPoint(pointId: Long) {
-            _uiState.update { it.copy(selectedPointId = pointId) }
+        /**
+         * Marks [pointId] as selected. [origin] records how the user got here, so the list can
+         * scroll to a selection it did not make and leave alone one it did.
+         */
+        fun selectPoint(
+            pointId: Long,
+            origin: SelectionOrigin,
+        ) {
+            _uiState.update { it.copy(selectedPointId = pointId, selectionOrigin = origin) }
+        }
+
+        /** Drops the selection — a tap on empty map is the user backing out of one. */
+        fun clearSelection() {
+            _uiState.update { it.copy(selectedPointId = null, selectionOrigin = null) }
         }
 
         /** Moves the selection to the previous point in list order; no-op at the start of the list. */
@@ -83,7 +111,7 @@ class EditPointsViewModel
             val state = _uiState.value
             val index = state.indexOf(state.selectedPointId) ?: return
             if (index <= 0) return
-            _uiState.update { it.copy(selectedPointId = state.points[index - 1].id) }
+            selectPoint(state.points[index - 1].id, SelectionOrigin.STEP)
         }
 
         /** Moves the selection to the next point in list order; no-op at the end of the list. */
@@ -91,7 +119,7 @@ class EditPointsViewModel
             val state = _uiState.value
             val index = state.indexOf(state.selectedPointId) ?: return
             if (index >= state.points.size - 1) return
-            _uiState.update { it.copy(selectedPointId = state.points[index + 1].id) }
+            selectPoint(state.points[index + 1].id, SelectionOrigin.STEP)
         }
 
         /**
@@ -105,19 +133,17 @@ class EditPointsViewModel
                 _uiState.update { it.copy(minPointsMessage = true) }
                 return
             }
-            val newSelectedId =
-                if (state.selectedPointId == point.id) {
-                    val index = state.indexOf(point.id) ?: 0
-                    val remaining = state.points.filterNot { it.id == point.id }
+            if (state.selectedPointId == point.id) {
+                val index = state.indexOf(point.id) ?: 0
+                val remaining = state.points.filterNot { it.id == point.id }
+                val successor =
                     when {
                         remaining.isEmpty() -> null
                         index < remaining.size -> remaining[index].id
                         else -> remaining.last().id
                     }
-                } else {
-                    state.selectedPointId
-                }
-            _uiState.update { it.copy(selectedPointId = newSelectedId) }
+                if (successor == null) clearSelection() else selectPoint(successor, SelectionOrigin.STEP)
+            }
             pointsWereDeleted = true
             viewModelScope.launch {
                 gpsPointRepository.deletePoint(walkId, point.id)

@@ -10,7 +10,10 @@ interface GpsPointRepository {
 
     suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint>
 
-    /** A walk's unfiltered points, oldest first — what the points editor lists and draws. */
+    /**
+     * A walk's points excluding Outlier Points, oldest first — what the points editor lists,
+     * draws, and steps through. Exactly the set Calculation consumes.
+     */
     fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>>
 
     /**
@@ -25,7 +28,10 @@ interface GpsPointRepository {
         points: List<GpsPoint>,
     )
 
-    /** Deletes [pointId] from [walkId] and returns the walk's remaining point count. */
+    /**
+     * Deletes [pointId] from [walkId] and returns the walk's remaining point count, counting
+     * only non-Outlier points — the same set [observePointsForWalk] emits.
+     */
     suspend fun deletePoint(
         walkId: Long,
         pointId: Long,

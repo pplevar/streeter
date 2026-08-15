@@ -4,6 +4,7 @@ import com.streeter.data.local.dao.GpsPointDao
 import com.streeter.data.local.entity.GpsPointEntity
 import com.streeter.data.repository.GpsPointRepositoryImpl
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -11,15 +12,19 @@ import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
- * Behavioral spec for [GpsPointRepositoryImpl.deletePoint] (issue #36).
+ * Behavioral spec for [GpsPointRepositoryImpl.deletePoint] (issue #36) and the points editor's
+ * observation (issue #49).
  *
  * Point-level deletion is the foundation later GPS-edit slices build on: it must remove
- * exactly the targeted point and report the walk's remaining point count.
+ * exactly the targeted point and report the walk's remaining point count. Both that count and
+ * the editor's observation are over non-Outlier points, so the floor guards the same set the
+ * user sees and Calculation consumes.
  */
 class GpsPointRepositoryTest {
     private fun point(
         id: Long,
         walkId: Long = 1L,
+        isFiltered: Boolean = false,
     ) = GpsPointEntity(
         id = id,
         walkId = walkId,
@@ -28,7 +33,7 @@ class GpsPointRepositoryTest {
         timestamp = id,
         accuracyM = 0f,
         speedKmh = 0f,
-        isFiltered = false,
+        isFiltered = isFiltered,
     )
 
     /** In-memory [GpsPointDao] backing store, keyed by point id. */
@@ -45,7 +50,12 @@ class GpsPointRepositoryTest {
 
         override suspend fun getPointsForSync(walkId: Long): List<GpsPointEntity> = emptyList()
 
-        override fun observePoints(walkId: Long): Flow<List<GpsPointEntity>> = flowOf(emptyList())
+        override fun observePoints(walkId: Long): Flow<List<GpsPointEntity>> =
+            flowOf(
+                store.values
+                    .filter { it.walkId == walkId && !it.isFiltered }
+                    .sortedBy { it.timestamp },
+            )
 
         override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPointEntity> =
             store.values.filter { it.walkId != excludeWalkId && !it.isFiltered }
@@ -62,8 +72,32 @@ class GpsPointRepositoryTest {
             store[pointId]?.let { if (it.walkId == walkId) store.remove(pointId) }
         }
 
-        override suspend fun countForWalk(walkId: Long): Int = store.values.count { it.walkId == walkId }
+        override suspend fun countUnfilteredForWalk(walkId: Long): Int = store.values.count { it.walkId == walkId && !it.isFiltered }
     }
+
+    @Test
+    fun `the editor's observation omits Outlier Points`() =
+        runBlocking {
+            val dao = FakeGpsPointDao(listOf(point(1L), point(2L, isFiltered = true), point(3L)))
+
+            val observed = GpsPointRepositoryImpl(dao).observePointsForWalk(walkId = 1L).first()
+
+            assertEquals(listOf(1L, 3L), observed.map { it.id })
+        }
+
+    @Test
+    fun `deletePoint's remaining count ignores Outlier Points`() =
+        runBlocking {
+            val dao =
+                FakeGpsPointDao(
+                    listOf(point(1L), point(2L), point(3L), point(4L, isFiltered = true), point(5L, isFiltered = true)),
+                )
+
+            val remaining = GpsPointRepositoryImpl(dao).deletePoint(walkId = 1L, pointId = 3L)
+
+            // Five rows stored, but only the two surviving non-outliers count towards the floor.
+            assertEquals(2, remaining)
+        }
 
     @Test
     fun `deleting an existing point removes it`() =
