@@ -1,7 +1,5 @@
 package com.streeter.data.repository
 
-import android.content.Context
-import androidx.core.content.edit
 import com.streeter.data.remote.api.StreeterApiService
 import com.streeter.data.remote.dto.GpsPointDto
 import com.streeter.data.remote.dto.GpsTraceSyncRequest
@@ -12,10 +10,9 @@ import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RemoteSyncRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.sync.SyncCursor
 import com.streeter.domain.work.WalkRecalculator
 import com.streeter.domain.work.WalkSyncFinalizer
-import dagger.hilt.android.qualifiers.ApplicationContext
-import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,7 +25,7 @@ class RemoteSyncRepositoryImpl
         private val gpsPointRepository: GpsPointRepository,
         private val walkRecalculator: WalkRecalculator,
         private val walkSyncFinalizer: WalkSyncFinalizer,
-        @ApplicationContext private val context: Context,
+        private val syncCursor: SyncCursor,
     ) : RemoteSyncRepository {
         override suspend fun syncWalk(walkId: Long): Result<Unit> =
             runCatching {
@@ -36,7 +33,7 @@ class RemoteSyncRepositoryImpl
                     walkRepository.getWalkById(walkId)
                         ?: error("Walk $walkId not found")
 
-                val clientId = getOrCreateClientId()
+                val clientId = syncCursor.clientId()
 
                 val response = apiService.syncWalk(walk.toSyncRequest(clientId))
                 val serverWalkId = response.serverWalkId
@@ -55,8 +52,9 @@ class RemoteSyncRepositoryImpl
                 walkSyncFinalizer.succeed(walkId, serverWalkId)
             }
 
-        override suspend fun pullWalks(since: Long): Result<Unit> =
+        override suspend fun pullWalks(): Result<Unit> =
             runCatching {
+                val since = syncCursor.pullSince()
                 val pageSize = 100
                 var offset = 0
                 var lastSyncedAt = since
@@ -101,10 +99,7 @@ class RemoteSyncRepositoryImpl
                     if (page.size < pageSize) break
                 }
 
-                if (lastSyncedAt > since) {
-                    val prefs = context.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
-                    prefs.edit { putLong("last_pull_sync_at", lastSyncedAt) }
-                }
+                syncCursor.advancePullCursor(lastSyncedAt)
             }
 
         override suspend fun deleteWalk(walkId: Long): Result<Unit> =
@@ -119,13 +114,6 @@ class RemoteSyncRepositoryImpl
 
                 walkRepository.hardDeleteWalk(walkId)
             }
-
-        private fun getOrCreateClientId(): String {
-            val prefs = context.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
-            return prefs.getString("client_id", null) ?: UUID.randomUUID().toString().also {
-                prefs.edit { putString("client_id", it) }
-            }
-        }
     }
 
 private fun Walk.toSyncRequest(clientId: String) =

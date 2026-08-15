@@ -29,6 +29,7 @@ object DatabaseModule {
                 StreeterDatabase.MIGRATION_4_5,
                 StreeterDatabase.MIGRATION_5_6,
                 StreeterDatabase.MIGRATION_6_7,
+                StreeterDatabase.MIGRATION_7_8,
             )
             .build()
 

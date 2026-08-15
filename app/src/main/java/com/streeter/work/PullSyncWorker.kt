@@ -26,11 +26,8 @@ class PullSyncWorker
         private val remoteSyncRepository: RemoteSyncRepository,
         private val syncFailureHandler: SyncFailureHandler,
     ) : CoroutineWorker(context, params) {
-        override suspend fun doWork(): Result {
-            val prefs = applicationContext.getSharedPreferences("sync_prefs", Context.MODE_PRIVATE)
-            val since = prefs.getLong("last_pull_sync_at", 0L)
-
-            return remoteSyncRepository.pullWalks(since).fold(
+        override suspend fun doWork(): Result =
+            remoteSyncRepository.pullWalks().fold(
                 onSuccess = {
                     syncFailureHandler.onSuccess()
                     Result.success()
@@ -40,7 +37,6 @@ class PullSyncWorker
                     if (syncFailureHandler.onFailure(throwable, runAttemptCount)) Result.retry() else Result.failure()
                 },
             )
-        }
 
         companion object {
             const val UNIQUE_WORK_NAME = "pull_sync"

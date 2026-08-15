@@ -20,6 +20,7 @@ import com.streeter.domain.model.WalkStreetCoverage
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.sync.SyncCursor
 import com.streeter.domain.work.WalkWorkScheduler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -201,21 +202,41 @@ internal class FakeWalkRepository(
 
     override suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk? = store.values.firstOrNull { it.serverWalkId == serverWalkId }
 
-    override suspend fun getLastPullSyncAt(): Long? = null
+    /** Every dto handed to [upsertFromRemote], in arrival order. */
+    val remoteUpserts = mutableListOf<WalkSyncDto>()
 
-    override suspend fun upsertFromRemote(dto: WalkSyncDto) = Unit
+    /** Per-walk GPS-trace freshness stamp; seed it to model a trace this device already holds. */
+    val traceSyncedAt = mutableMapOf<Long, Long>()
 
-    override suspend fun updateLastPullSyncAt(
-        id: Long,
-        timestamp: Long,
-    ) = Unit
+    override suspend fun upsertFromRemote(dto: WalkSyncDto) {
+        remoteUpserts += dto
+    }
 
-    override suspend fun getGpsTraceSyncedAt(id: Long): Long? = null
+    override suspend fun getGpsTraceSyncedAt(id: Long): Long? = traceSyncedAt[id]
 
     override suspend fun updateGpsTraceSyncedAt(
         id: Long,
         timestamp: Long,
-    ) = Unit
+    ) {
+        traceSyncedAt[id] = timestamp
+    }
+}
+
+/**
+ * In-memory [SyncCursor] — the test-side adapter that replaces app preferences, so the sync
+ * module can be constructed and its pull feed driven entirely on the JVM (issue #54).
+ */
+internal class InMemorySyncCursor(
+    private var cursor: Long = 0L,
+    private val id: String = "test-client",
+) : SyncCursor {
+    override suspend fun pullSince(): Long = cursor
+
+    override suspend fun advancePullCursor(serverUpdatedAt: Long) {
+        if (serverUpdatedAt > cursor) cursor = serverUpdatedAt
+    }
+
+    override suspend fun clientId(): String = id
 }
 
 /** In-memory [PendingMatchJobRepository] keyed by walkId. */

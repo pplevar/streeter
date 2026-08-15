@@ -161,7 +161,6 @@ internal class FakeWalkDao(seed: List<WalkEntity> = emptyList()) : WalkDao {
         updatedAt: Long,
         syncStatus: String,
         serverWalkId: Long?,
-        lastPullSyncAt: Long?,
         lastResumedAt: Long?,
         isPaused: Boolean,
     ) {
@@ -178,7 +177,6 @@ internal class FakeWalkDao(seed: List<WalkEntity> = emptyList()) : WalkDao {
                 updatedAt = updatedAt,
                 syncStatus = syncStatus,
                 serverWalkId = serverWalkId,
-                lastPullSyncAt = lastPullSyncAt,
                 lastResumedAt = lastResumedAt,
                 isPaused = isPaused,
             )
@@ -209,13 +207,6 @@ internal class FakeWalkDao(seed: List<WalkEntity> = emptyList()) : WalkDao {
     override suspend fun updateSyncStatusOnly(
         id: Long,
         syncStatus: String,
-    ) = error("unused")
-
-    override suspend fun getLastPullSyncAt(): Long? = error("unused")
-
-    override suspend fun updateLastPullSyncAt(
-        id: Long,
-        timestamp: Long,
     ) = error("unused")
 
     override suspend fun getGpsTraceSyncedAt(id: Long): Long? = error("unused")
