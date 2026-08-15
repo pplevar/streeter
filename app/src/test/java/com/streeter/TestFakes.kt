@@ -241,7 +241,7 @@ internal class FakePendingMatchJobRepository(
 }
 
 /** Records every scheduling call so tests can assert what was enqueued/cancelled. */
-internal class FakeWalkWorkScheduler : WalkWorkScheduler {
+internal open class FakeWalkWorkScheduler : WalkWorkScheduler {
     val newWalkProcessing = mutableListOf<Long>()
     val calculationEnqueued = mutableListOf<Long>()
     val calculationCancelled = mutableListOf<Long>()

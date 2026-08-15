@@ -7,7 +7,7 @@ import com.streeter.domain.model.*
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
-import com.streeter.domain.work.WalkWorkScheduler
+import com.streeter.domain.work.WalkRecalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -58,7 +58,7 @@ class ManualCreateViewModel
         private val routeSegmentRepository: RouteSegmentRepository,
         private val gpsPointRepository: GpsPointRepository,
         private val routingEngine: RoutingEngine,
-        private val walkWorkScheduler: WalkWorkScheduler,
+        private val walkRecalculator: WalkRecalculator,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(ManualCreateUiState())
         val uiState: StateFlow<ManualCreateUiState> = _uiState.asStateFlow()
@@ -241,16 +241,8 @@ class ManualCreateViewModel
                         ),
                     )
 
-                    walkRepository.updateWalk(
-                        walk.copy(
-                            id = walkId,
-                            status = WalkStatus.PENDING_MATCH,
-                            updatedAt = System.currentTimeMillis(),
-                        ),
-                    )
-
                     // New walk: Sync (durability) and Calculation (coverage) run in parallel.
-                    walkWorkScheduler.enqueueNewWalkProcessing(walkId)
+                    walkRecalculator.traceChanged(walkId, newWalk = true)
 
                     _uiState.update {
                         it.copy(

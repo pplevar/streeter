@@ -24,7 +24,7 @@ import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.WalkRepository
-import com.streeter.domain.work.WalkWorkScheduler
+import com.streeter.domain.work.WalkRecalculator
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -56,7 +56,7 @@ class LocationService : LifecycleService() {
 
     @Inject lateinit var routingEngine: RoutingEngine
 
-    @Inject lateinit var walkWorkScheduler: WalkWorkScheduler
+    @Inject lateinit var walkRecalculator: WalkRecalculator
 
     private val binder = LocalBinder()
     private var fusedClient: FusedLocationProviderClient? = null
@@ -222,7 +222,6 @@ class LocationService : LifecycleService() {
                     }
                 walkRepository.updateWalk(
                     it.copy(
-                        status = WalkStatus.PENDING_MATCH,
                         durationMs = finalDuration,
                         lastResumedAt = null,
                         isPaused = false,
@@ -240,7 +239,7 @@ class LocationService : LifecycleService() {
                 ),
             )
             // New walk: Sync (durability) and Calculation (coverage) run in parallel.
-            walkWorkScheduler.enqueueNewWalkProcessing(walkId)
+            walkRecalculator.traceChanged(walkId, newWalk = true)
             Timber.w("Walk stopped: id=%d → PENDING_MATCH, sync + calculation enqueued", walkId)
             currentWalkId = -1L
             isRecording.value = false

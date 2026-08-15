@@ -12,8 +12,8 @@ import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RemoteSyncRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkRecalculator
 import com.streeter.domain.work.WalkSyncFinalizer
-import com.streeter.domain.work.WalkWorkScheduler
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
 import javax.inject.Inject
@@ -26,7 +26,7 @@ class RemoteSyncRepositoryImpl
         private val apiService: StreeterApiService,
         private val walkRepository: WalkRepository,
         private val gpsPointRepository: GpsPointRepository,
-        private val walkWorkScheduler: WalkWorkScheduler,
+        private val walkRecalculator: WalkRecalculator,
         private val walkSyncFinalizer: WalkSyncFinalizer,
         @ApplicationContext private val context: Context,
     ) : RemoteSyncRepository {
@@ -84,10 +84,9 @@ class RemoteSyncRepositoryImpl
                                 trace.points.map { it.toDomain(localWalk.id) },
                             )
                             walkRepository.updateGpsTraceSyncedAt(localWalk.id, trace.updatedAt)
-                            walkRepository.updateWalk(localWalk.copy(status = WalkStatus.PENDING_MATCH))
                             // Pulled trace changed: recompute coverage. No upfront Sync — the
                             // pulled walk is already durable on the server.
-                            walkWorkScheduler.enqueueCalculation(localWalk.id)
+                            walkRecalculator.traceChanged(localWalk.id)
                         }
                     }
 

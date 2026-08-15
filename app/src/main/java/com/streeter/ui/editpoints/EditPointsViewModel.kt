@@ -4,10 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streeter.domain.model.GpsPoint
-import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
-import com.streeter.domain.repository.WalkRepository
-import com.streeter.domain.work.WalkWorkScheduler
+import com.streeter.domain.work.WalkRecalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
@@ -64,8 +62,7 @@ class EditPointsViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val gpsPointRepository: GpsPointRepository,
-        private val walkRepository: WalkRepository,
-        private val walkWorkScheduler: WalkWorkScheduler,
+        private val walkRecalculator: WalkRecalculator,
     ) : ViewModel() {
         private val walkId: Long = checkNotNull(savedStateHandle["walkId"])
 
@@ -152,10 +149,9 @@ class EditPointsViewModel
         }
 
         /**
-         * Called when leaving the editor. If any points were deleted this session, puts the walk
-         * back through map matching and sync so the route, coverage, and remote copy reflect the
-         * shorter point set — the same transition [com.streeter.ui.edit.RouteEditViewModel.save]
-         * performs after a route edit. No-op if nothing was deleted.
+         * Called when leaving the editor. If any points were deleted this session, the walk's GPS
+         * Trace changed, so its Calculation is stale — hand that to
+         * [com.streeter.domain.work.WalkRecalculator]. No-op if nothing was deleted.
          *
          * Suspends rather than firing on [viewModelScope]: the caller navigates away right after
          * this returns, and that navigation tears down this ViewModel's scope, which would cancel
@@ -163,15 +159,7 @@ class EditPointsViewModel
          */
         suspend fun onExit() {
             if (!pointsWereDeleted) return
-            walkRepository.getWalkById(walkId)?.let { walk ->
-                walkRepository.updateWalk(
-                    walk.copy(
-                        status = WalkStatus.PENDING_MATCH,
-                        updatedAt = System.currentTimeMillis(),
-                    ),
-                )
-            }
-            walkWorkScheduler.enqueueCalculation(walkId)
+            walkRecalculator.traceChanged(walkId)
         }
 
         /** Restores the exact point removed by [pendingUndo]. */

@@ -6,6 +6,7 @@ import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkRecalculator
 import com.streeter.service.LocationService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,17 +33,17 @@ class HomeViewModel
         private val walkRepository: WalkRepository,
         streetRepository: StreetRepository,
         private val routingEngine: RoutingEngine,
+        private val walkRecalculator: WalkRecalculator,
     ) : ViewModel() {
         init {
             if (!LocationService.isRunning) {
                 viewModelScope.launch {
-                    val now = System.currentTimeMillis()
                     var stale = walkRepository.getActiveRecordingWalk()
                     while (stale != null) {
                         if (stale.isPaused) break // paused walk is intact; RecordingViewModel will restore it
-                        walkRepository.updateWalk(
-                            stale.copy(status = WalkStatus.PENDING_MATCH, updatedAt = now),
-                        )
+                        // A recording that died with the process is a finished recording that never
+                        // got its stop path run, so it still needs Sync as well as Calculation.
+                        walkRecalculator.traceChanged(stale.id, newWalk = true)
                         stale = walkRepository.getActiveRecordingWalk()
                     }
                 }

@@ -12,6 +12,7 @@ import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.domain.work.WalkCalculationFinalizer
 import com.streeter.domain.work.WalkDeleter
+import com.streeter.domain.work.WalkRecalculator
 import com.streeter.domain.work.WalkWork
 import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.work.MapMatchingWorker
@@ -48,6 +49,7 @@ class WalkDetailViewModel
         private val gpsPointRepository: GpsPointRepository,
         private val workManager: WorkManager,
         private val walkWorkScheduler: WalkWorkScheduler,
+        private val walkRecalculator: WalkRecalculator,
         private val walkDeleter: WalkDeleter,
         private val finalizer: WalkCalculationFinalizer,
         private val routingEngine: RoutingEngine,
@@ -99,17 +101,6 @@ class WalkDetailViewModel
             viewModelScope.launch {
                 val walk = walkRepository.getWalkById(walkId)
                 _uiState.update { it.copy(walk = walk, isLoading = false) }
-                // If the walk is stuck in PENDING_MATCH, re-enqueue the worker.
-                // KEEP policy means this is a no-op if the worker is already queued or running.
-                // A stopped walk is COMPLETED, so it never reaches this branch — stopping
-                // therefore survives a detail-screen reopen (issue #15).
-                if (walk?.status == WalkStatus.PENDING_MATCH) {
-                    Timber.w("Walk $walkId is PENDING_MATCH on load — ensuring Calculation is enqueued")
-                    // enqueueCalculation uses REPLACE: if existing work is stuck in backoff
-                    // (ENQUEUED state), KEEP would silently ignore it and nothing runs. REPLACE
-                    // restarts it, which is correct since we only get here when visibly stuck.
-                    walkWorkScheduler.enqueueCalculation(walkId)
-                }
             }
             // Live observation so the UI reacts when the worker completes the walk
             viewModelScope.launch {
@@ -174,11 +165,9 @@ class WalkDetailViewModel
         }
 
         fun recalculateRoute() {
-            val walk = _uiState.value.walk ?: return
             viewModelScope.launch {
                 try {
-                    walkRepository.updateWalk(walk.copy(status = WalkStatus.PENDING_MATCH))
-                    walkWorkScheduler.enqueueCalculation(walkId)
+                    walkRecalculator.traceChanged(walkId)
                 } catch (e: Exception) {
                     Timber.e(e, "Recalculate failed for walk=$walkId")
                     _uiState.update { it.copy(errorMessage = "Recalculation failed. Please try again.") }

@@ -7,6 +7,7 @@ import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkRecalculator
 import com.streeter.ui.editpoints.EditPointsViewModel
 import com.streeter.ui.editpoints.PendingUndo
 import com.streeter.ui.editpoints.SelectionOrigin
@@ -124,7 +125,11 @@ class EditPointsViewModelTest {
         walkWorkScheduler: FakeWalkWorkScheduler = FakeWalkWorkScheduler(),
     ): EditPointsViewModel {
         val savedStateHandle = SavedStateHandle(mapOf("walkId" to 1L))
-        return EditPointsViewModel(savedStateHandle, FakeGpsPointRepository(points), walkRepository, walkWorkScheduler)
+        return EditPointsViewModel(
+            savedStateHandle,
+            FakeGpsPointRepository(points),
+            WalkRecalculator(walkRepository, walkWorkScheduler),
+        )
     }
 
     /**

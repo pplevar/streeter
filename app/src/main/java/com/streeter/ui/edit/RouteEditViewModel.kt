@@ -8,7 +8,7 @@ import com.streeter.domain.model.*
 import com.streeter.domain.repository.EditOperationRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
-import com.streeter.domain.work.WalkWorkScheduler
+import com.streeter.domain.work.WalkRecalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -52,7 +52,7 @@ class RouteEditViewModel
         private val routeSegmentRepository: RouteSegmentRepository,
         private val editOperationRepository: EditOperationRepository,
         private val routingEngine: RoutingEngine,
-        private val walkWorkScheduler: WalkWorkScheduler,
+        private val walkRecalculator: WalkRecalculator,
     ) : ViewModel() {
         private val walkId: Long = checkNotNull(savedStateHandle["walkId"])
 
@@ -330,18 +330,9 @@ class RouteEditViewModel
                         ),
                     )
 
-                    // Transition walk to PENDING_MATCH and queue coverage recalculation
-                    walkRepository.getWalkById(walkId)?.let { walk ->
-                        walkRepository.updateWalk(
-                            walk.copy(
-                                status = WalkStatus.PENDING_MATCH,
-                                updatedAt = System.currentTimeMillis(),
-                            ),
-                        )
-                    }
-                    // Route edit: recompute coverage only. No upfront Sync — the walk is
+                    // The route changed, so the Calculation is stale. No upfront Sync — the walk is
                     // already durable; completeWalk() re-syncs the matched distance afterward.
-                    walkWorkScheduler.enqueueCalculation(walkId)
+                    walkRecalculator.traceChanged(walkId)
 
                     _uiState.update { it.copy(isSaved = true) }
                 } catch (e: Exception) {
