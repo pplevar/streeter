@@ -86,6 +86,13 @@ class RemoteSyncRepositoryImpl
                             walkRepository.updateGpsTraceSyncedAt(localWalk.id, trace.updatedAt)
                             // Pulled trace changed: recompute coverage. No upfront Sync — the
                             // pulled walk is already durable on the server.
+                            //
+                            // This also restamps `updatedAt` to the local clock, over the server
+                            // value `upsertFromRemote` just wrote. `upsertFromRemote` gates server
+                            // updates on `dto.updatedAt > existing.updatedAt`, so a server edit
+                            // stamped *behind* this device's clock is dropped — a window the width
+                            // of the client/server clock skew. Issue #53 asks for the bump on every
+                            // path; see the PR discussion before narrowing it here.
                             walkRecalculator.traceChanged(localWalk.id)
                         }
                     }

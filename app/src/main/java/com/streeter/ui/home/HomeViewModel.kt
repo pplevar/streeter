@@ -39,11 +39,14 @@ class HomeViewModel
             if (!LocationService.isRunning) {
                 viewModelScope.launch {
                     var stale = walkRepository.getActiveRecordingWalk()
+                    var previousId: Long? = null
                     while (stale != null) {
                         if (stale.isPaused) break // paused walk is intact; RecordingViewModel will restore it
-                        // A recording that died with the process is a finished recording that never
-                        // got its stop path run, so it still needs Sync as well as Calculation.
-                        walkRecalculator.traceChanged(stale.id, newWalk = true)
+                        if (stale.id == previousId) break // the sweep didn't clear it; don't spin
+                        previousId = stale.id
+                        // Recalculate-only: Calculation's completion re-syncs the walk (ADR-0001),
+                        // so the recovered recording reaches the server without an upfront Sync.
+                        walkRecalculator.traceChanged(stale.id)
                         stale = walkRepository.getActiveRecordingWalk()
                     }
                 }
