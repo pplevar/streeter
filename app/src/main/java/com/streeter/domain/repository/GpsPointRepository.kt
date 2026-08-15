@@ -10,11 +10,13 @@ interface GpsPointRepository {
 
     suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint>
 
+    /** A walk's unfiltered points, oldest first — what the points editor lists and draws. */
     fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>>
 
     /**
-     * All unfiltered points of every walk except [excludeWalkId], ordered by walk then time.
-     * Backs the recording map's history layer; pass a non-existent id to exclude nothing.
+     * All unfiltered points of every non-deleted walk except [excludeWalkId], ordered by walk
+     * then time. Backs the recording map's history layer; pass a non-existent id to exclude
+     * nothing.
      */
     suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint>
 

@@ -15,16 +15,27 @@ interface GpsPointDao {
     @Query("SELECT * FROM gps_points WHERE walkId = :walkId AND isFiltered = 0 ORDER BY timestamp ASC")
     suspend fun getPointsForSync(walkId: Long): List<GpsPointEntity>
 
-    @Query("SELECT * FROM gps_points WHERE walkId = :walkId ORDER BY timestamp ASC")
+    /**
+     * A walk's usable points — what the points editor lists and draws. Outlier-filtered points
+     * are excluded: they already count for neither Calculation nor sync, so showing them would
+     * put spikes on the map that no other screen draws and that deleting changes nothing about.
+     */
+    @Query("SELECT * FROM gps_points WHERE walkId = :walkId AND isFiltered = 0 ORDER BY timestamp ASC")
     fun observePoints(walkId: Long): Flow<List<GpsPointEntity>>
 
     /**
      * Every walk's points except [excludeWalkId]'s — the recording screen's history layer.
      * Grouped by walk so each walk can be drawn as its own LineString.
+     *
+     * Joins `walks` to skip `DELETED` tombstones: a synced walk the user deleted keeps its row
+     * (and its points, via no cascade) until the server confirms the delete, which offline can
+     * be days. Its trace must disappear from the map the moment it is deleted, not the moment
+     * the delete is dispatched.
      */
     @Query(
-        "SELECT * FROM gps_points WHERE walkId != :excludeWalkId AND isFiltered = 0 " +
-            "ORDER BY walkId ASC, timestamp ASC",
+        "SELECT p.* FROM gps_points p INNER JOIN walks w ON w.id = p.walkId " +
+            "WHERE p.walkId != :excludeWalkId AND p.isFiltered = 0 AND w.status != 'DELETED' " +
+            "ORDER BY p.walkId ASC, p.timestamp ASC",
     )
     suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPointEntity>
 
