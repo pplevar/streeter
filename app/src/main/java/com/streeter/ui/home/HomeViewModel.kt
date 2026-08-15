@@ -6,6 +6,7 @@ import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkRecalculator
 import com.streeter.service.LocationService
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.SharingStarted
@@ -32,17 +33,20 @@ class HomeViewModel
         private val walkRepository: WalkRepository,
         streetRepository: StreetRepository,
         private val routingEngine: RoutingEngine,
+        private val walkRecalculator: WalkRecalculator,
     ) : ViewModel() {
         init {
             if (!LocationService.isRunning) {
                 viewModelScope.launch {
-                    val now = System.currentTimeMillis()
                     var stale = walkRepository.getActiveRecordingWalk()
+                    var previousId: Long? = null
                     while (stale != null) {
                         if (stale.isPaused) break // paused walk is intact; RecordingViewModel will restore it
-                        walkRepository.updateWalk(
-                            stale.copy(status = WalkStatus.PENDING_MATCH, updatedAt = now),
-                        )
+                        if (stale.id == previousId) break // the sweep didn't clear it; don't spin
+                        previousId = stale.id
+                        // Recalculate-only: Calculation's completion re-syncs the walk (ADR-0001),
+                        // so the recovered recording reaches the server without an upfront Sync.
+                        walkRecalculator.traceChanged(stale.id)
                         stale = walkRepository.getActiveRecordingWalk()
                     }
                 }
