@@ -3,6 +3,7 @@ package com.streeter.ui.manual
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streeter.domain.engine.RoutingEngine
+import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RouteSegmentRepository
@@ -14,7 +15,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import org.json.JSONObject
 import timber.log.Timber
 import javax.inject.Inject
 
@@ -43,11 +43,7 @@ data class ManualCreateUiState(
     val hasSegments: Boolean get() = segmentGeometries.isNotEmpty()
     val hasPoints: Boolean get() = placedPoints.isNotEmpty()
     val accumulatedGeometryJson: String? get() =
-        when {
-            segmentGeometries.isEmpty() -> null
-            segmentGeometries.size == 1 -> segmentGeometries[0]
-            else -> mergeSegmentGeometries(segmentGeometries)
-        }
+        if (segmentGeometries.isEmpty()) null else SegmentMerge.merge(segmentGeometries)
 }
 
 @HiltViewModel
@@ -194,11 +190,7 @@ class ManualCreateViewModel
 
             viewModelScope.launch {
                 try {
-                    val mergedGeometry =
-                        when (state.segmentGeometries.size) {
-                            1 -> state.segmentGeometries[0]
-                            else -> mergeSegmentGeometries(state.segmentGeometries)
-                        }
+                    val mergedGeometry = SegmentMerge.merge(state.segmentGeometries)
 
                     val wayIdsJson = "[${state.allWayIds.joinToString(",")}]"
 
@@ -262,67 +254,21 @@ class ManualCreateViewModel
             }
         }
 
+        /**
+         * The segment used when the routing engine is unavailable: the two points joined
+         * directly, measured as a great circle rather than as a difference of degrees.
+         */
         internal fun straightLineRoute(
             start: LatLng,
             end: LatLng,
-        ): RouteResult {
-            val results = FloatArray(1)
-            android.location.Location.distanceBetween(
-                start.lat,
-                start.lng,
-                end.lat,
-                end.lng,
-                results,
-            )
-            val geometry =
-                """{"type":"Feature","geometry":{"type":"LineString","coordinates":
-                |[[${start.lng},${start.lat}],[${end.lng},${end.lat}]]},
-                |"properties":{}}
-                """.trimMargin()
-            return RouteResult(
-                geometryJson = geometry,
-                distanceM = results[0].toDouble(),
+        ): RouteResult =
+            RouteResult(
+                geometryJson = TraceGeometry.lineStringFeature(listOf(start, end)),
+                distanceM = TraceGeometry.distanceMeters(start, end),
                 wayIds = emptyList(),
             )
-        }
 
         fun clearError() {
             _uiState.update { it.copy(errorMessage = null) }
         }
-
-        companion object {
-            /**
-             * Merges a list of GeoJSON Feature geometry strings into a single Feature.
-             * Deduplicates junction coordinates by skipping the first coordinate of
-             * each subsequent segment (it equals the last coordinate of the previous segment).
-             */
-            fun mergeSegmentGeometries(geometries: List<String>): String {
-                if (geometries.isEmpty()) return ""
-                if (geometries.size == 1) return geometries[0]
-
-                val allCoords = mutableListOf<String>()
-
-                geometries.forEachIndexed { index, geoJson ->
-                    val obj = JSONObject(geoJson)
-                    val geometry = obj.getJSONObject("geometry")
-                    val coordsArray = geometry.getJSONArray("coordinates")
-
-                    val startIndex = if (index == 0) 0 else 1
-                    for (i in startIndex until coordsArray.length()) {
-                        allCoords.add(coordsArray.getJSONArray(i).toString())
-                    }
-                }
-
-                val coordsString = allCoords.joinToString(",")
-                return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coordsString]},"properties":{}}"""
-            }
-        }
     }
-
-/**
- * Package-level merge function used by the UiState computed property.
- * Delegates to the companion object implementation.
- */
-internal fun mergeSegmentGeometries(geometries: List<String>): String {
-    return ManualCreateViewModel.mergeSegmentGeometries(geometries)
-}
