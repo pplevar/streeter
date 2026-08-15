@@ -149,6 +149,11 @@ internal class FakeWalkRepository(
         store[id]?.let { store[id] = it.copy(syncStatus = syncStatus, serverWalkId = serverWalkId) }
     }
 
+    /** Mirrors the status-only DAO update: `serverWalkId` is left as-is. */
+    override suspend fun markSyncFailed(id: Long) {
+        store[id]?.let { store[id] = it.copy(syncStatus = SyncStatus.SYNC_FAILED) }
+    }
+
     override suspend fun insertWalk(walk: Walk): Long {
         store[walk.id] = walk
         return walk.id

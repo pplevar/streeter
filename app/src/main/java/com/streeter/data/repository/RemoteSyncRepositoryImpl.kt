@@ -7,12 +7,12 @@ import com.streeter.data.remote.dto.GpsPointDto
 import com.streeter.data.remote.dto.GpsTraceSyncRequest
 import com.streeter.data.remote.dto.WalkSyncRequest
 import com.streeter.domain.model.GpsPoint
-import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.RemoteSyncRepository
 import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkSyncFinalizer
 import com.streeter.domain.work.WalkWorkScheduler
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.UUID
@@ -27,6 +27,7 @@ class RemoteSyncRepositoryImpl
         private val walkRepository: WalkRepository,
         private val gpsPointRepository: GpsPointRepository,
         private val walkWorkScheduler: WalkWorkScheduler,
+        private val walkSyncFinalizer: WalkSyncFinalizer,
         @ApplicationContext private val context: Context,
     ) : RemoteSyncRepository {
         override suspend fun syncWalk(walkId: Long): Result<Unit> =
@@ -51,7 +52,7 @@ class RemoteSyncRepositoryImpl
                     walkRepository.updateGpsTraceSyncedAt(walkId, traceResponse.updatedAt)
                 }
 
-                walkRepository.updateSyncStatus(walkId, SyncStatus.SYNCED, serverWalkId)
+                walkSyncFinalizer.succeed(walkId, serverWalkId)
             }
 
         override suspend fun pullWalks(since: Long): Result<Unit> =

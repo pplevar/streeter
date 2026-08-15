@@ -206,6 +206,8 @@ internal class FakeWalkDao(seed: List<WalkEntity> = emptyList()) : WalkDao {
         serverWalkId: Long?,
     ) = error("unused")
 
+    override suspend fun markSyncFailed(id: Long) = error("unused")
+
     override suspend fun getLastPullSyncAt(): Long? = error("unused")
 
     override suspend fun updateLastPullSyncAt(
