@@ -64,6 +64,13 @@ interface WalkDao {
         serverWalkId: Long?,
     )
 
+    /** Status-only update: deliberately leaves `serverWalkId` alone (issue #52). */
+    @Query("UPDATE walks SET syncStatus = :syncStatus WHERE id = :id")
+    suspend fun updateSyncStatusOnly(
+        id: Long,
+        syncStatus: String,
+    )
+
     @Query("SELECT * FROM walks WHERE serverWalkId = :serverWalkId LIMIT 1")
     suspend fun getWalkByServerWalkId(serverWalkId: Long): WalkEntity?
 

@@ -12,9 +12,8 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
-import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.repository.RemoteSyncRepository
-import com.streeter.domain.repository.WalkRepository
+import com.streeter.domain.work.WalkSyncFinalizer
 import com.streeter.domain.work.WalkWork
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -28,7 +27,7 @@ class SyncWorker
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         private val remoteSyncRepository: RemoteSyncRepository,
-        private val walkRepository: WalkRepository,
+        private val walkSyncFinalizer: WalkSyncFinalizer,
         private val workManager: WorkManager,
         private val syncFailureHandler: SyncFailureHandler,
     ) : CoroutineWorker(context, params) {
@@ -48,7 +47,7 @@ class SyncWorker
                 },
                 onFailure = { throwable ->
                     Timber.w(throwable, "Sync failed for walk $walkId, attempt $runAttemptCount")
-                    walkRepository.updateSyncStatus(walkId, SyncStatus.SYNC_FAILED, null)
+                    walkSyncFinalizer.fail(walkId)
                     if (syncFailureHandler.onFailure(throwable, runAttemptCount)) Result.retry() else Result.failure()
                 },
             )

@@ -193,6 +193,8 @@ Tracks the lifecycle of each `MapMatchingWorker` job.
 | `softDelete(id)` | Sets `status = DELETED` |
 | `hardDelete(id)` | Physical row deletion |
 | `getActiveRecording(): WalkEntity?` | Walk with `status = RECORDING`, LIMIT 1 |
+| `updateSyncStatus(id, syncStatus, serverWalkId)` | Sets both columns; writes `serverWalkId` unconditionally, `null` included |
+| `updateSyncStatusOnly(id, syncStatus)` | Sets `syncStatus` alone, leaving `serverWalkId` intact (the failed-sync path) |
 
 ### `GpsPointDao`
 

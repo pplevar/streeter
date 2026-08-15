@@ -27,11 +27,18 @@ interface WalkRepository {
 
     suspend fun getWalksPendingSync(): List<Walk>
 
+    /** Set a walk's sync status; writes [serverWalkId] unconditionally, `null` included. */
     suspend fun updateSyncStatus(
         id: Long,
         syncStatus: SyncStatus,
         serverWalkId: Long?,
     )
+
+    /**
+     * Mark a sync attempt as failed, leaving the walk's `serverWalkId` untouched so an
+     * already-synced walk keeps its server identity for the retry (issue #52).
+     */
+    suspend fun markSyncFailed(id: Long)
 
     suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk?
 
