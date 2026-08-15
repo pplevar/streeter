@@ -35,7 +35,7 @@ class WalkRepositoryImpl
                 id = e.id, title = e.title, date = e.date, durationMs = e.durationMs,
                 distanceM = e.distanceM, status = e.status, source = e.source,
                 createdAt = e.createdAt, updatedAt = e.updatedAt, syncStatus = e.syncStatus,
-                serverWalkId = e.serverWalkId, lastPullSyncAt = e.lastPullSyncAt,
+                serverWalkId = e.serverWalkId,
                 lastResumedAt = e.lastResumedAt, isPaused = e.isPaused,
             )
         }
@@ -61,8 +61,6 @@ class WalkRepositoryImpl
 
         override suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk? = walkDao.getWalkByServerWalkId(serverWalkId)?.toDomain()
 
-        override suspend fun getLastPullSyncAt(): Long? = walkDao.getLastPullSyncAt()
-
         override suspend fun upsertFromRemote(dto: WalkSyncDto) {
             val existing = walkDao.getWalkByServerWalkId(dto.serverWalkId)
             if (dto.status == "DELETED") {
@@ -87,17 +85,11 @@ class WalkRepositoryImpl
                     updatedAt = dto.updatedAt,
                     syncStatus = SyncStatus.SYNCED.name,
                     serverWalkId = existing.serverWalkId,
-                    lastPullSyncAt = existing.lastPullSyncAt,
                     lastResumedAt = null,
                     isPaused = false,
                 )
             }
         }
-
-        override suspend fun updateLastPullSyncAt(
-            id: Long,
-            timestamp: Long,
-        ) = walkDao.updateLastPullSyncAt(id, timestamp)
 
         override suspend fun getGpsTraceSyncedAt(id: Long): Long? = walkDao.getGpsTraceSyncedAt(id)
 

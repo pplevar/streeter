@@ -1,7 +1,9 @@
 package com.streeter.di
 
 import com.streeter.data.repository.*
+import com.streeter.data.sync.PreferencesSyncCursor
 import com.streeter.domain.repository.*
+import com.streeter.domain.sync.SyncCursor
 import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.work.WalkWorkSchedulerImpl
 import dagger.Binds
@@ -33,6 +35,9 @@ abstract class RepositoryModule {
 
     @Binds @Singleton
     abstract fun bindRemoteSyncRepository(impl: RemoteSyncRepositoryImpl): RemoteSyncRepository
+
+    @Binds @Singleton
+    abstract fun bindSyncCursor(impl: PreferencesSyncCursor): SyncCursor
 
     @Binds @Singleton
     abstract fun bindWalkWorkScheduler(impl: WalkWorkSchedulerImpl): WalkWorkScheduler

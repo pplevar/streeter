@@ -42,14 +42,7 @@ interface WalkRepository {
 
     suspend fun getWalkByServerWalkId(serverWalkId: Long): Walk?
 
-    suspend fun getLastPullSyncAt(): Long?
-
     suspend fun upsertFromRemote(dto: WalkSyncDto)
-
-    suspend fun updateLastPullSyncAt(
-        id: Long,
-        timestamp: Long,
-    )
 
     suspend fun getGpsTraceSyncedAt(id: Long): Long?
 

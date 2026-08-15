@@ -19,7 +19,7 @@ import com.streeter.data.local.entity.*
         EditOperationEntity::class,
         PendingMatchJobEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 abstract class StreeterDatabase : RoomDatabase() {
@@ -77,6 +77,15 @@ abstract class StreeterDatabase : RoomDatabase() {
                 override fun migrate(db: SupportSQLiteDatabase) {
                     db.execSQL("ALTER TABLE walks ADD COLUMN lastResumedAt INTEGER")
                     db.execSQL("ALTER TABLE walks ADD COLUMN isPaused INTEGER NOT NULL DEFAULT 0")
+                }
+            }
+
+        val MIGRATION_7_8 =
+            object : Migration(7, 8) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    // The pull cursor lives in preferences behind `SyncCursor` (issue #54); this
+                    // per-walk column was a second, never-read mechanism for the same fact.
+                    db.execSQL("ALTER TABLE walks DROP COLUMN lastPullSyncAt")
                 }
             }
     }
