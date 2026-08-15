@@ -53,6 +53,10 @@ android {
         noCompress += listOf("pbf", "pmtiles")
     }
 
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -147,5 +151,8 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.coroutines.test)
+    // Room migrations need a real SQLite; Robolectric keeps that test in the JVM suite.
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.junit.android)
 }
