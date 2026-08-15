@@ -18,6 +18,16 @@ interface GpsPointDao {
     @Query("SELECT * FROM gps_points WHERE walkId = :walkId ORDER BY timestamp ASC")
     fun observePoints(walkId: Long): Flow<List<GpsPointEntity>>
 
+    /**
+     * Every walk's points except [excludeWalkId]'s — the recording screen's history layer.
+     * Grouped by walk so each walk can be drawn as its own LineString.
+     */
+    @Query(
+        "SELECT * FROM gps_points WHERE walkId != :excludeWalkId AND isFiltered = 0 " +
+            "ORDER BY walkId ASC, timestamp ASC",
+    )
+    suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPointEntity>
+
     @Query("DELETE FROM gps_points WHERE walkId = :walkId")
     suspend fun deleteByWalkId(walkId: Long)
 

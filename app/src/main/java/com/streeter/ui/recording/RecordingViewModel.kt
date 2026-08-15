@@ -10,6 +10,7 @@ import androidx.lifecycle.viewModelScope
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.service.LocationService
+import com.streeter.ui.map.WalkHistoryLoader
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.delay
@@ -29,6 +30,7 @@ class RecordingViewModel
     constructor(
         @ApplicationContext private val context: Context,
         private val walkRepository: WalkRepository,
+        private val walkHistoryLoader: WalkHistoryLoader,
     ) : ViewModel() {
         private var locationService: LocationService? = null
         private var isBound = false
@@ -50,6 +52,11 @@ class RecordingViewModel
 
         private val _isPaused = MutableStateFlow(false)
         val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
+
+        // Past walks' raw traces, loaded once at init: they cannot change while recording,
+        // so observing them would only re-query on every GPS batch insert.
+        private val _historyGeometryJson = MutableStateFlow<String?>(null)
+        val historyGeometryJson: StateFlow<String?> = _historyGeometryJson.asStateFlow()
 
         val distanceM: StateFlow<Double> =
             _gpsPoints
@@ -108,6 +115,9 @@ class RecordingViewModel
                         bindToService()
                     }
                 }
+                // A walk resumed here is already drawn by the live route layer, so keep it
+                // out of history; -1 excludes nothing when starting fresh.
+                _historyGeometryJson.value = walkHistoryLoader.load(activeWalk?.id ?: -1L)
             }
 
             viewModelScope.launch {

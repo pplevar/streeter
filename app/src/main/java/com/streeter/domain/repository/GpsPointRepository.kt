@@ -12,6 +12,12 @@ interface GpsPointRepository {
 
     fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>>
 
+    /**
+     * All unfiltered points of every walk except [excludeWalkId], ordered by walk then time.
+     * Backs the recording map's history layer; pass a non-existent id to exclude nothing.
+     */
+    suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint>
+
     suspend fun replacePointsFromRemote(
         walkId: Long,
         points: List<GpsPoint>,

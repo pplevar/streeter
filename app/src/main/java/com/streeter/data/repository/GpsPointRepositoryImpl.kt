@@ -26,6 +26,9 @@ class GpsPointRepositoryImpl
         override fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>> =
             dao.observePoints(walkId).map { list -> list.map { it.toDomain() } }
 
+        override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint> =
+            dao.getPointsExcludingWalk(excludeWalkId).map { it.toDomain() }
+
         override suspend fun replacePointsFromRemote(
             walkId: Long,
             points: List<GpsPoint>,

@@ -42,6 +42,7 @@ A street is a named road derived from OpenStreetMap data; a section is one span 
 - The server owns **Walk metadata + GPS Trace**. Other devices reference walks by a server-assigned id.
 - Each device owns its own **Calculation** results (Map Matching + Coverage). These are local projections of the synced trace and are recomputed independently per device.
 - Because Calculation is local and reproducible, **Sync never waits for Calculation**, and a freshly-synced walk on another device shows an estimated distance until that device recomputes.
+- The recording screen's past-walks layer draws **GPS Traces, not Coverage** — so it appears the moment a walk ends, but drifts off-street and will not agree with the app's Coverage numbers. Deliberate; see ADR 0006.
 
 ## Example dialogue
 

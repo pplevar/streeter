@@ -47,6 +47,10 @@ class GpsPointRepositoryTest {
 
         override fun observePoints(walkId: Long): Flow<List<GpsPointEntity>> = flowOf(emptyList())
 
+        override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPointEntity> =
+            store.values.filter { it.walkId != excludeWalkId && !it.isFiltered }
+                .sortedWith(compareBy({ it.walkId }, { it.timestamp }))
+
         override suspend fun deleteByWalkId(walkId: Long) {
             store.values.removeAll { it.walkId == walkId }
         }
