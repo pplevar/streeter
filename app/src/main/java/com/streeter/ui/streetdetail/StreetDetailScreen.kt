@@ -18,10 +18,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.domain.model.StreetWalkEntry
-import com.streeter.ui.map.MAP_STYLE_URL
+import com.streeter.ui.map.MapLayer
 import com.streeter.ui.map.MapLibreMapView
-import com.streeter.ui.map.fitBoundsToGeometryJson
-import org.maplibre.android.maps.MapLibreMap
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -34,16 +32,8 @@ fun StreetDetailScreen(
     viewModel: StreetDetailViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
-
-    // Fit map bounds when geometry loads or walk selection changes.
-    // On walk selection, fit to that walk; otherwise show all walks combined.
+    // On walk selection, frame that walk; otherwise show all the street's walks combined.
     val geometryForBounds = uiState.selectedWalkGeometryJson ?: uiState.combinedGeometryJson
-    LaunchedEffect(mapRef, geometryForBounds) {
-        val map = mapRef ?: return@LaunchedEffect
-        val json = geometryForBounds ?: return@LaunchedEffect
-        fitBoundsToGeometryJson(map, json)
-    }
 
     Scaffold(
         topBar = {
@@ -85,14 +75,16 @@ fun StreetDetailScreen(
                                         .fillMaxWidth()
                                         .height(280.dp)
                                         .clip(RoundedCornerShape(28.dp)),
-                                styleUrl = MAP_STYLE_URL,
-                                routeGeometryJson = uiState.combinedGeometryJson,
-                                previewGeometryJson = uiState.selectedWalkGeometryJson,
+                                layers =
+                                    listOf(
+                                        MapLayer.Route(uiState.combinedGeometryJson),
+                                        MapLayer.HighlightedWalk(uiState.selectedWalkGeometryJson),
+                                    ),
+                                fitBoundsTo = geometryForBounds,
                                 onMapReady = { map ->
                                     map.uiSettings.isScrollGesturesEnabled = true
                                     map.uiSettings.isZoomGesturesEnabled = true
                                     map.uiSettings.isTiltGesturesEnabled = false
-                                    mapRef = map
                                 },
                             )
                         }
