@@ -4,7 +4,6 @@ import com.streeter.domain.geometry.BoundingBox
 import com.streeter.domain.geometry.MalformedGeometryException
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.LatLng
-import com.streeter.service.GpsOutlierFilter
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.double
 import kotlinx.serialization.json.jsonArray
@@ -235,16 +234,15 @@ class TraceGeometryTest {
 
     // --- Measuring ---
 
+    // This was a cross-check against the outlier filter's own haversine. The filter now measures
+    // with this module, so that comparison could no longer fail — the metres are pinned directly
+    // instead, and the filter's tests pin the same measure from their side.
     @Test
-    fun `distance agrees with the outlier filter's spherical measure`() {
+    fun `distance between two observations is the great-circle metres`() {
         val a = LatLng(52.3702, 4.8952)
         val b = LatLng(52.3760, 4.9010)
 
-        assertEquals(
-            GpsOutlierFilter.haversineMeters(a.lat, a.lng, b.lat, b.lng),
-            TraceGeometry.distanceMeters(a, b),
-            1e-9,
-        )
+        assertEquals(755.62, TraceGeometry.distanceMeters(a, b), 0.01)
     }
 
     @Test

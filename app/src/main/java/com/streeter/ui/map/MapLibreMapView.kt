@@ -11,7 +11,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.toLatLng
 import org.maplibre.android.MapLibre
 import org.maplibre.android.camera.CameraPosition
 import org.maplibre.android.geometry.LatLng
@@ -59,6 +61,9 @@ private const val PREVIEW_LAYER = "preview_layer"
 private const val POINT_DOTS_SOURCE = "point_dots_source"
 private const val POINT_DOTS_LAYER = "point_dots_layer"
 private const val POINT_ID_PROPERTY = "pointId"
+
+/** Breathing room left around a fitted route, so its ends do not sit against the screen edge. */
+private const val BOUNDS_PADDING_PX = 64
 
 /** Half-width of the hit-test box around a tap — a fingertip's worth of slack around a dot. */
 private val TAP_RADIUS = 20.dp
@@ -304,8 +309,7 @@ private fun updateRouteLayer(
     if (points.size < 2) return
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(GPS_ROUTE_SOURCE) ?: return
-    val geojson = buildLineStringGeoJson(points.filter { !it.isFiltered })
-    source.setGeoJson(geojson)
+    source.setGeoJson(TraceGeometry.lineStringFeature(points.filter { !it.isFiltered }.map { it.toLatLng() }))
 }
 
 private fun updatePositionLayer(
@@ -317,11 +321,6 @@ private fun updatePositionLayer(
     val source = style.getSourceAs<GeoJsonSource>(POSITION_SOURCE) ?: return
     val geojson = """{"type":"Feature","geometry":{"type":"Point","coordinates":[${last.lng},${last.lat}]},"properties":{}}"""
     source.setGeoJson(geojson)
-}
-
-fun buildLineStringGeoJson(points: List<GpsPoint>): String {
-    val coords = points.joinToString(",") { "[${it.lng},${it.lat}]" }
-    return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
 }
 
 private fun updateRouteJsonLayer(
@@ -341,9 +340,7 @@ private fun updatePreviewLayer(
 ) {
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(PREVIEW_SOURCE) ?: return
-    source.setGeoJson(
-        geojson ?: """{"type":"FeatureCollection","features":[]}""",
-    )
+    source.setGeoJson(geojson ?: TraceGeometry.EMPTY_FEATURE_COLLECTION)
 }
 
 private fun updateHistoryLayer(
@@ -352,7 +349,7 @@ private fun updateHistoryLayer(
 ) {
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(HISTORY_SOURCE) ?: return
-    source.setGeoJson(geojson ?: EMPTY_FEATURE_COLLECTION)
+    source.setGeoJson(geojson ?: TraceGeometry.EMPTY_FEATURE_COLLECTION)
 }
 
 private fun updatePointDotsLayer(
@@ -363,7 +360,7 @@ private fun updatePointDotsLayer(
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(POINT_DOTS_SOURCE) ?: return
     if (!enabled) {
-        source.setGeoJson(EMPTY_FEATURE_COLLECTION)
+        source.setGeoJson(TraceGeometry.EMPTY_FEATURE_COLLECTION)
         return
     }
     // Each dot carries its point id, so a tap can be answered with an id rather than a
@@ -407,91 +404,40 @@ private fun updateSelectedPointLayer(
     val style = map.style ?: return
     val source = style.getSourceAs<GeoJsonSource>(SELECTED_POINT_SOURCE) ?: return
     if (point == null) {
-        source.setGeoJson("""{"type":"FeatureCollection","features":[]}""")
+        source.setGeoJson(TraceGeometry.EMPTY_FEATURE_COLLECTION)
         return
     }
     val geojson = """{"type":"Feature","geometry":{"type":"Point","coordinates":[${point.lng},${point.lat}]},"properties":{}}"""
     source.setGeoJson(geojson)
 }
 
+/**
+ * Moves the camera to show all of [geojson], with [BOUNDS_PADDING_PX] of breathing room.
+ *
+ * One routine for every payload the app draws — a feature, a collection, a bare geometry, one
+ * line or many — because [TraceGeometry] reads them all the same way. The camera stays put when
+ * there is nothing to frame, and a payload we cannot read is logged rather than thrown at a
+ * screen that has no answer for it.
+ */
 fun fitBoundsToGeometryJson(
     map: MapLibreMap,
     geojson: String,
 ) {
+    // The whole move is guarded, not just the read: a degenerate box — one point, or a payload
+    // that is all the same coordinate — is a camera the renderer may refuse, and a screen that
+    // cannot frame its route should still draw it.
     try {
-        val feature = org.json.JSONObject(geojson)
-        val geometry = feature.optJSONObject("geometry") ?: return
-        val coordinates = geometry.optJSONArray("coordinates") ?: return
-        if (coordinates.length() == 0) return
-        val builder = LatLngBounds.Builder()
-        for (i in 0 until coordinates.length()) {
-            val coord = coordinates.getJSONArray(i)
-            builder.include(LatLng(coord.getDouble(1), coord.getDouble(0)))
-        }
+        val bounds = TraceGeometry.bounds(geojson) ?: return
         map.animateCamera(
-            org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(builder.build(), 64),
+            org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(
+                LatLngBounds.Builder()
+                    .include(LatLng(bounds.south, bounds.west))
+                    .include(LatLng(bounds.north, bounds.east))
+                    .build(),
+                BOUNDS_PADDING_PX,
+            ),
         )
     } catch (e: Exception) {
         Timber.e(e, "Failed to fit bounds to geometry JSON")
-    }
-}
-
-fun fitBoundsToJson(
-    map: MapLibreMap,
-    geojson: String,
-) {
-    try {
-        val root = org.json.JSONObject(geojson)
-        val builder = LatLngBounds.Builder()
-        var hasPoints = false
-
-        fun addLineCoords(coords: org.json.JSONArray) {
-            for (i in 0 until coords.length()) {
-                val c = coords.getJSONArray(i)
-                builder.include(LatLng(c.getDouble(1), c.getDouble(0)))
-                hasPoints = true
-            }
-        }
-
-        fun processGeometry(geometry: org.json.JSONObject) {
-            val coordinates = geometry.optJSONArray("coordinates") ?: return
-            if (coordinates.length() == 0) return
-            val first = coordinates.opt(0) ?: return
-            when {
-                first is org.json.JSONArray && first.opt(0) is Number -> addLineCoords(coordinates)
-                first is org.json.JSONArray -> {
-                    for (i in 0 until coordinates.length()) {
-                        addLineCoords(coordinates.getJSONArray(i))
-                    }
-                }
-                first is Number -> {
-                    builder.include(LatLng(coordinates.getDouble(1), coordinates.getDouble(0)))
-                    hasPoints = true
-                }
-            }
-        }
-
-        when (root.optString("type")) {
-            "FeatureCollection" -> {
-                val features = root.optJSONArray("features") ?: return
-                for (i in 0 until features.length()) {
-                    val geometry = features.getJSONObject(i).optJSONObject("geometry") ?: continue
-                    processGeometry(geometry)
-                }
-            }
-            "Feature" -> {
-                val geometry = root.optJSONObject("geometry") ?: return
-                processGeometry(geometry)
-            }
-            else -> processGeometry(root)
-        }
-
-        if (hasPoints) {
-            map.animateCamera(
-                org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(builder.build(), 64),
-            )
-        }
-    } catch (e: Exception) {
-        Timber.e(e, "Failed to fit bounds to JSON")
     }
 }
