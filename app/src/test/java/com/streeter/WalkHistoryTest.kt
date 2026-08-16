@@ -1,9 +1,9 @@
 package com.streeter
 
+import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.ui.map.WalkHistoryLoader
-import com.streeter.ui.map.buildWalkHistoryGeoJson
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -22,8 +22,11 @@ import org.junit.Test
  * The layer draws raw GPS Traces, not Coverage — see ADR 0006. What matters here is that
  * each past walk becomes its own line, filtered points never reach the map, and the
  * in-progress walk is excluded so it is not drawn twice.
+ *
+ * The builder these tests pin now lives in [TraceGeometry] (issue #59); the loader that feeds
+ * it is still the seam between the repository and the map.
  */
-class WalkHistoryGeoJsonTest {
+class WalkHistoryTest {
     private fun point(
         walkId: Long,
         timestamp: Long,
@@ -57,7 +60,7 @@ class WalkHistoryGeoJsonTest {
     @Test
     fun `each walk becomes its own LineString`() {
         val json =
-            buildWalkHistoryGeoJson(
+            TraceGeometry.walkHistoryFeatureCollection(
                 listOf(
                     point(walkId = 1L, timestamp = 1L),
                     point(walkId = 1L, timestamp = 2L),
@@ -78,7 +81,7 @@ class WalkHistoryGeoJsonTest {
     @Test
     fun `interleaved walks are still grouped into one line each`() {
         val json =
-            buildWalkHistoryGeoJson(
+            TraceGeometry.walkHistoryFeatureCollection(
                 listOf(
                     point(walkId = 1L, timestamp = 1L),
                     point(walkId = 2L, timestamp = 2L),
@@ -97,7 +100,7 @@ class WalkHistoryGeoJsonTest {
     @Test
     fun `points of one walk are ordered by timestamp`() {
         val json =
-            buildWalkHistoryGeoJson(
+            TraceGeometry.walkHistoryFeatureCollection(
                 listOf(
                     point(walkId = 1L, timestamp = 3L),
                     point(walkId = 1L, timestamp = 1L),
@@ -111,7 +114,7 @@ class WalkHistoryGeoJsonTest {
     @Test
     fun `filtered points are excluded`() {
         val json =
-            buildWalkHistoryGeoJson(
+            TraceGeometry.walkHistoryFeatureCollection(
                 listOf(
                     point(walkId = 1L, timestamp = 1L),
                     point(walkId = 1L, timestamp = 2L, isFiltered = true),
@@ -125,7 +128,7 @@ class WalkHistoryGeoJsonTest {
     @Test
     fun `a walk left with fewer than two points contributes no line`() {
         val json =
-            buildWalkHistoryGeoJson(
+            TraceGeometry.walkHistoryFeatureCollection(
                 listOf(
                     point(walkId = 1L, timestamp = 1L),
                     point(walkId = 2L, timestamp = 2L),
@@ -140,7 +143,7 @@ class WalkHistoryGeoJsonTest {
     @Test
     fun `manually drawn walks are drawn like recorded ones`() {
         val json =
-            buildWalkHistoryGeoJson(
+            TraceGeometry.walkHistoryFeatureCollection(
                 listOf(
                     point(walkId = 5L, timestamp = 1L, isManual = true),
                     point(walkId = 5L, timestamp = 2L, isManual = true),
@@ -154,7 +157,7 @@ class WalkHistoryGeoJsonTest {
 
     @Test
     fun `empty history is a valid empty FeatureCollection`() {
-        val json = buildWalkHistoryGeoJson(emptyList())
+        val json = TraceGeometry.walkHistoryFeatureCollection(emptyList())
 
         assertEquals("FeatureCollection", typeOf(json))
         assertTrue(lineStrings(json).isEmpty())

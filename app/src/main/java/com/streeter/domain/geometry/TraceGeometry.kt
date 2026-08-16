@@ -1,6 +1,8 @@
 package com.streeter.domain.geometry
 
+import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.LatLng
+import com.streeter.domain.model.toLatLng
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -148,6 +150,23 @@ object TraceGeometry {
         val features = traces.filter { it.size >= 2 }.joinToString(",") { lineStringFeature(it) }
         return if (features.isEmpty()) EMPTY_FEATURE_COLLECTION else """{"type":"FeatureCollection","features":[$features]}"""
     }
+
+    /**
+     * The recorded traces of several walks as one `LineString` feature per walk, walks in the
+     * order their points first appear.
+     *
+     * Outlier Points are dropped and each walk's points are ordered by time, because a GPS Trace
+     * is what the recorder kept, in the order it was walked. A walk left with fewer than two
+     * points contributes no feature — see [featureCollection].
+     */
+    fun walkHistoryFeatureCollection(points: List<GpsPoint>): String =
+        featureCollection(
+            points
+                .filter { !it.isFiltered }
+                .groupBy { it.walkId }
+                .values
+                .map { walkPoints -> walkPoints.sortedBy { it.timestamp }.map { it.toLatLng() } },
+        )
 
     private fun coordinateList(points: List<LatLng>): String = points.joinToString(",") { "[${it.lng},${it.lat}]" }
 

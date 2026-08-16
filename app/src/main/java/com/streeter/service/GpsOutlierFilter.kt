@@ -2,7 +2,6 @@ package com.streeter.service
 
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
-import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.toLatLng
 
 object GpsOutlierFilter {
@@ -23,18 +22,4 @@ object GpsOutlierFilter {
         val speedKmh = (distM / elapsedS) * 3.6
         return speedKmh in minSpeedKmh.toDouble()..maxSpeedKmh.toDouble()
     }
-
-    /**
-     * The filter's distance, in metres — now [TraceGeometry.distanceMeters] itself.
-     *
-     * This was the one correct copy of the haversine, so the shared module was written to match
-     * it and migrating changed no result here. Kept only so the tests that pin those metres go
-     * on pinning them through the filter; nothing in the app calls it.
-     */
-    fun haversineMeters(
-        lat1: Double,
-        lng1: Double,
-        lat2: Double,
-        lng2: Double,
-    ): Double = TraceGeometry.distanceMeters(LatLng(lat1, lng1), LatLng(lat2, lng2))
 }

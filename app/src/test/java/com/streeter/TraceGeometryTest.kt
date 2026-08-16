@@ -234,9 +234,9 @@ class TraceGeometryTest {
 
     // --- Measuring ---
 
-    // This was a cross-check against the outlier filter's own haversine. The filter now measures
-    // with this module, so that comparison could no longer fail — the metres are pinned directly
-    // instead, and the filter's tests pin the same measure from their side.
+    // These used to be a cross-check against the outlier filter's own haversine. That copy is
+    // gone (issue #59), so the metres it pinned are pinned here instead — this is the only
+    // distance in the app.
     @Test
     fun `distance between two observations is the great-circle metres`() {
         val a = LatLng(52.3702, 4.8952)
@@ -257,6 +257,28 @@ class TraceGeometryTest {
     @Test
     fun `a degree of latitude is about 111 kilometres`() {
         assertEquals(111_195.0, TraceGeometry.distanceMeters(LatLng(0.0, 0.0), LatLng(1.0, 0.0)), 50.0)
+    }
+
+    @Test
+    fun `two observations at the same place are no distance apart`() {
+        assertEquals(0.0, TraceGeometry.distanceMeters(LatLng(51.5074, -0.1278), LatLng(51.5074, -0.1278)), 0.001)
+    }
+
+    @Test
+    fun `London to Paris is about 343 kilometres`() {
+        // A long-distance sanity check: catches a wrong Earth radius or a confused
+        // degrees/radians conversion, which the metre-scale cases above are too small to show.
+        val d = TraceGeometry.distanceMeters(LatLng(51.5074, -0.1278), LatLng(48.8566, 2.3522))
+
+        assertEquals(343_500.0, d, 2_000.0)
+    }
+
+    @Test
+    fun `distance does not depend on which observation comes first`() {
+        val a = TraceGeometry.distanceMeters(LatLng(51.5074, -0.1278), LatLng(48.8566, 2.3522))
+        val b = TraceGeometry.distanceMeters(LatLng(48.8566, 2.3522), LatLng(51.5074, -0.1278))
+
+        assertEquals(a, b, 1e-6)
     }
 
     @Test
