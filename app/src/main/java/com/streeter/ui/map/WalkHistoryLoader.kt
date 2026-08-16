@@ -1,5 +1,6 @@
 package com.streeter.ui.map
 
+import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.repository.GpsPointRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -23,6 +24,6 @@ class WalkHistoryLoader
          */
         suspend fun load(excludeWalkId: Long): String {
             val points = gpsPointRepository.getPointsExcludingWalk(excludeWalkId)
-            return withContext(Dispatchers.Default) { buildWalkHistoryGeoJson(points) }
+            return withContext(Dispatchers.Default) { TraceGeometry.walkHistoryFeatureCollection(points) }
         }
     }
