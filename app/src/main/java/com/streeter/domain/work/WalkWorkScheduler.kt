@@ -35,4 +35,14 @@ interface WalkWorkScheduler {
      * `DELETE /walks/{serverWalkId}` and hard-deletes the local row once the server confirms.
      */
     fun enqueueDelete(walkId: Long)
+
+    /**
+     * Collect every walk the server has seen since this device's cursor. Every trigger — app
+     * foreground, a finished push, the user pulling to refresh — goes through here so they all
+     * share one unique pull and one existing-work policy (issue #60).
+     */
+    fun enqueuePull()
+
+    /** Register the daily background pull. Idempotent: an existing schedule is left running. */
+    fun schedulePeriodicPull()
 }
