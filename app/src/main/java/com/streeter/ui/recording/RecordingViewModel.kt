@@ -7,7 +7,9 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.toLatLng
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.service.LocationService
 import com.streeter.ui.map.WalkHistoryLoader
@@ -22,7 +24,6 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
-import kotlin.math.*
 
 @HiltViewModel
 class RecordingViewModel
@@ -61,9 +62,7 @@ class RecordingViewModel
         val distanceM: StateFlow<Double> =
             _gpsPoints
                 .map { points ->
-                    points.filter { !it.isFiltered }
-                        .zipWithNext()
-                        .sumOf { (a, b) -> haversineM(a.lat, a.lng, b.lat, b.lng) }
+                    TraceGeometry.lengthMeters(points.filter { !it.isFiltered }.map { it.toLatLng() })
                 }
                 .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 0.0)
 
@@ -223,21 +222,4 @@ class RecordingViewModel
             unbind()
             super.onCleared()
         }
-
-        private fun haversineM(
-            lat1: Double,
-            lon1: Double,
-            lat2: Double,
-            lon2: Double,
-        ): Double {
-            val earthRadiusM = 6371000.0
-            val phi1 = lat1.toRadians()
-            val phi2 = lat2.toRadians()
-            val dphi = (lat2 - lat1).toRadians()
-            val dlambda = (lon2 - lon1).toRadians()
-            val a = sin(dphi / 2).pow(2) + cos(phi1) * cos(phi2) * sin(dlambda / 2).pow(2)
-            return earthRadiusM * 2 * asin(sqrt(a))
-        }
-
-        private fun Double.toRadians() = this * PI / 180.0
     }

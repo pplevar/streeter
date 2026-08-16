@@ -68,6 +68,13 @@ class WalkDetailViewModel
             preWarmEngine()
         }
 
+        /**
+         * The walk's matched route, or its raw GPS Trace to draw when there is no route yet.
+         *
+         * The trace comes out of the repository already free of Outlier Points, so the screen has
+         * no filtering left to do — the trace it draws and the trace everything else measures are
+         * the same set of points (CONTEXT.md: excluded at the data seam, not per screen).
+         */
         private fun loadRouteData() {
             viewModelScope.launch {
                 val segments = routeSegmentRepository.getSegmentsForWalk(walkId)

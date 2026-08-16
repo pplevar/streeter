@@ -6,6 +6,10 @@ import kotlinx.coroutines.flow.Flow
 interface GpsPointRepository {
     suspend fun insertPoints(points: List<GpsPoint>)
 
+    /**
+     * A walk's points excluding Outlier Points, oldest first — the one-shot read of the same set
+     * [observePointsForWalk] emits, for the callers that draw or send a trace once.
+     */
     suspend fun getPointsForWalk(walkId: Long): List<GpsPoint>
 
     suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint>

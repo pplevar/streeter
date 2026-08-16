@@ -11,3 +11,6 @@ data class GpsPoint(
     val isFiltered: Boolean,
     val isManual: Boolean = false,
 )
+
+/** Where the observation was, without the rest of what was recorded about it. */
+fun GpsPoint.toLatLng(): LatLng = LatLng(lat = lat, lng = lng)
