@@ -17,11 +17,13 @@ import com.streeter.domain.model.WalkSectionCoverage
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.model.WalkStreetCoverage
+import com.streeter.domain.recording.WakeGuard
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.domain.sync.SyncCursor
+import com.streeter.domain.time.Clock
 import com.streeter.domain.work.WalkWorkScheduler
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -158,6 +160,10 @@ internal class FakeWalkRepository(
     walks: List<Walk> = emptyList(),
 ) : WalkRepository {
     private val store = walks.associateBy { it.id }.toMutableMap()
+    private var idSeq = store.keys.maxOrNull() ?: 0L
+
+    /** Everything currently stored, for tests that assert on how many walks were created. */
+    val walks: List<Walk> get() = store.values.toList()
 
     override suspend fun getWalkById(id: Long): Walk? = store[id]
 
@@ -178,9 +184,11 @@ internal class FakeWalkRepository(
         store[id]?.let { store[id] = it.copy(syncStatus = SyncStatus.SYNC_FAILED) }
     }
 
+    /** Mirrors Room: an unsaved walk (id 0) is assigned a fresh row id. */
     override suspend fun insertWalk(walk: Walk): Long {
-        store[walk.id] = walk
-        return walk.id
+        val id = if (walk.id == 0L) ++idSeq else walk.id
+        store[id] = walk.copy(id = id)
+        return id
     }
 
     override suspend fun markWalkDeleted(id: Long) {
@@ -362,4 +370,57 @@ internal class FakeRoutingEngine(
     override fun getEdgeGeometry(edgeId: Long): String? = null
 
     override fun getEdgeGeometriesForStreet(streetName: String): List<String> = emptyList()
+}
+
+/** A [Clock] the test moves by hand, so durations are exact instead of wall-clock flaky. */
+internal class MutableClock(
+    private var nowMs: Long = 0L,
+) : Clock {
+    override fun nowMillis(): Long = nowMs
+
+    fun advance(millis: Long) {
+        nowMs += millis
+    }
+}
+
+/** Runs the guarded block directly — nothing to keep awake on the JVM. */
+internal object NoopWakeGuard : WakeGuard {
+    override suspend fun <T> whileAwake(block: suspend () -> T): T = block()
+}
+
+/**
+ * In-memory [GpsPointRepository] that keeps every written point, and can be told to fail its
+ * writes so tests can assert that a batch is not lost when the database rejects it.
+ */
+internal class FakeGpsPointRepository : GpsPointRepository {
+    val inserted = mutableListOf<GpsPoint>()
+
+    /** When true, [insertPoints] throws instead of persisting. */
+    var failWrites = false
+
+    override suspend fun insertPoints(points: List<GpsPoint>) {
+        if (failWrites) throw IllegalStateException("write failed")
+        inserted += points
+    }
+
+    override suspend fun getPointsForWalk(walkId: Long): List<GpsPoint> = inserted.filter { it.walkId == walkId && !it.isFiltered }
+
+    override suspend fun getPointsForMapMatching(walkId: Long): List<GpsPoint> = getPointsForWalk(walkId)
+
+    override fun observePointsForWalk(walkId: Long): Flow<List<GpsPoint>> = flowOf(emptyList())
+
+    override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint> = inserted.filter { it.walkId != excludeWalkId }
+
+    override suspend fun replacePointsFromRemote(
+        walkId: Long,
+        points: List<GpsPoint>,
+    ) {
+        inserted.removeAll { it.walkId == walkId }
+        inserted += points
+    }
+
+    override suspend fun deletePoint(
+        walkId: Long,
+        pointId: Long,
+    ): Int = 0
 }

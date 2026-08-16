@@ -1,4 +1,4 @@
-package com.streeter.service
+package com.streeter.domain.recording
 
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint

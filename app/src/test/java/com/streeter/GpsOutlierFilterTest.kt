@@ -3,7 +3,7 @@ package com.streeter
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.LatLng
-import com.streeter.service.GpsOutlierFilter
+import com.streeter.domain.recording.GpsOutlierFilter
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

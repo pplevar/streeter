@@ -7,7 +7,7 @@ Clean architecture: `domain/` is pure Kotlin — no Android imports.
 ## Key Data Flows
 
 **Recording a walk:**
-`LocationService` (foreground service) → batches GPS points (flush at 50) via `GpsOutlierFilter` → persists to Room → on stop, enqueues `MapMatchingWorker` and sets walk status to `PENDING_MATCH`.
+`LocationService` (foreground service) owns the Android side — notification, location callbacks, lifecycle — and delegates every decision to `RecordingSession` (`domain/recording/`), which batches GPS points (flush at 50) via `GpsOutlierFilter`, persists them to Room, and accumulates duration across pause/resume off an injectable `Clock`. On stop it enqueues a `PendingMatchJob` and hands the walk to `WalkRecalculator`, which sets `PENDING_MATCH` and schedules Sync + Calculation.
 
 **Walk status lifecycle:** `RECORDING` → `PENDING_MATCH` → `COMPLETED` (or `MANUAL_DRAFT` for manually created walks).
 
