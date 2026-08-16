@@ -11,7 +11,6 @@ import com.streeter.domain.model.JobStatus
 import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.MatchResult
 import com.streeter.domain.model.PendingMatchJob
-import com.streeter.domain.model.RouteResult
 import com.streeter.domain.model.RouteSegment
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkSource
@@ -116,40 +115,6 @@ class CalculationSessionTest {
         }
     }
 
-    /** A [RoutingEngine] whose only interesting behaviour is what map matching returns. */
-    private class MatchingEngine(
-        private val result: Result<MatchResult>,
-        private val ready: Boolean = true,
-    ) : RoutingEngine {
-        var initializeCount = 0
-
-        override suspend fun isReady() = ready
-
-        override suspend fun initialize() {
-            initializeCount++
-        }
-
-        override suspend fun matchTrace(points: List<GpsPoint>): Result<MatchResult> = result
-
-        override suspend fun route(
-            from: LatLng,
-            to: LatLng,
-            via: List<LatLng>,
-        ): Result<RouteResult> = Result.failure(UnsupportedOperationException("fake"))
-
-        override fun getStreetName(edgeId: Long): String? = null
-
-        override fun findNearestNamedStreet(edgeId: Long): String? = null
-
-        override fun getEdgeLength(edgeId: Long): Double? = null
-
-        override fun getStreetTotalLength(streetName: String): Double? = null
-
-        override fun getEdgeGeometry(edgeId: Long): String? = null
-
-        override fun getEdgeGeometriesForStreet(streetName: String): List<String> = emptyList()
-    }
-
     private class Fixture(
         val walks: FakeWalkRepository,
         val points: FakeGpsPointRepository = FakeGpsPointRepository(),
@@ -188,7 +153,7 @@ class CalculationSessionTest {
             points = pointRepo,
             segments = segments,
             jobs = FakePendingMatchJobRepository(listOf(job(walk.id))),
-            routing = routing ?: MatchingEngine(matchResult),
+            routing = routing ?: FakeRoutingEngine(matchResult = matchResult),
             coverage = coverage,
         )
     }
@@ -236,7 +201,7 @@ class CalculationSessionTest {
             val f =
                 fixture(
                     walk = walk(source = WalkSource.MANUAL, status = WalkStatus.MANUAL_DRAFT),
-                    routing = MatchingEngine(Result.failure(IllegalStateException("must not be called"))),
+                    routing = FakeRoutingEngine(matchResult = Result.failure(IllegalStateException("must not be called"))),
                     segments = FakeRouteSegmentRepository(listOf(drawn)),
                 )
 
@@ -337,6 +302,49 @@ class CalculationSessionTest {
         }
 
     @Test
+    fun `a walk deleted while matching runs leaves neither a route nor coverage behind`() =
+        runBlocking {
+            val f = fixture()
+            // Deletion lands mid-match — the window the walk spends minutes in.
+            val deletingDriver =
+                object : RecordingDriver() {
+                    override suspend fun <T> whileMatching(block: suspend () -> T): T {
+                        val matched = block()
+                        f.walks.markWalkDeleted(1L)
+                        return matched
+                    }
+                }
+
+            val disposition = f.session.calculate(1L, runAttemptCount = 0, driver = deletingDriver)
+
+            assertEquals(CalculationDisposition.FAILURE, disposition)
+            assertTrue("no coverage may be computed", f.coverage.computedFor.isEmpty())
+            assertTrue("no route may be written", f.segments.stored.isEmpty())
+            assertEquals(WalkStatus.DELETED, f.walks.getWalkById(1L)!!.status)
+            assertEquals(JobStatus.DONE, f.jobs.getJobForWalk(1L)!!.status)
+        }
+
+    @Test
+    fun `a walk hard-deleted while matching runs aborts rather than completing`() =
+        runBlocking {
+            val f = fixture()
+            val deletingDriver =
+                object : RecordingDriver() {
+                    override suspend fun <T> whileMatching(block: suspend () -> T): T {
+                        val matched = block()
+                        f.walks.hardDeleteWalk(1L)
+                        return matched
+                    }
+                }
+
+            val disposition = f.session.calculate(1L, runAttemptCount = 0, driver = deletingDriver)
+
+            assertEquals(CalculationDisposition.FAILURE, disposition)
+            assertTrue(f.coverage.computedFor.isEmpty())
+            assertTrue(f.segments.stored.isEmpty())
+        }
+
+    @Test
     fun `a walk that no longer exists fails without retrying`() =
         runBlocking {
             val f = fixture()
@@ -397,8 +405,8 @@ class CalculationSessionTest {
     fun `an engine that is not ready is initialized first, and progress is published throughout`() =
         runBlocking {
             val engine =
-                MatchingEngine(
-                    Result.success(MatchResult(emptyList(), listOf(10L), lineString(52.0 to 13.0, 52.001 to 13.0), 5.0)),
+                FakeRoutingEngine(
+                    matchResult = Result.success(MatchResult(emptyList(), listOf(10L), lineString(52.0 to 13.0, 52.001 to 13.0), 5.0)),
                     ready = false,
                 )
             val f = fixture(routing = engine)
@@ -408,7 +416,7 @@ class CalculationSessionTest {
 
             assertEquals(1, engine.initializeCount)
             assertNotNull(driver.steps.firstOrNull { it.second.contains("map engine") })
-            assertEquals(95, driver.steps.map { it.first }.max())
+            assertEquals(95, driver.steps.maxOf { it.first })
         }
 
     @Test
@@ -428,9 +436,7 @@ class CalculationSessionTest {
                     }
                 }
             val engine =
-                object : RoutingEngine by MatchingEngine(
-                    Result.success(MatchResult(emptyList(), listOf(1L), lineString(52.0 to 13.0), 1.0)),
-                ) {
+                object : FakeRoutingEngine() {
                     override suspend fun matchTrace(points: List<GpsPoint>): Result<MatchResult> {
                         matchedInsideWindow = insideWindow
                         return Result.success(MatchResult(emptyList(), listOf(1L), lineString(52.0 to 13.0), 1.0))
@@ -450,7 +456,10 @@ class CalculationSessionTest {
                     walks = FakeWalkRepository(listOf(walk())),
                     points = FakeGpsPointRepository().apply { inserted += listOf(point(), point(lat = 52.001)) },
                     jobs = FakePendingMatchJobRepository(),
-                    routing = MatchingEngine(Result.success(MatchResult(emptyList(), listOf(10L), lineString(52.0 to 13.0), 7.0))),
+                    routing =
+                        FakeRoutingEngine(
+                            matchResult = Result.success(MatchResult(emptyList(), listOf(10L), lineString(52.0 to 13.0), 7.0)),
+                        ),
                 )
 
             val disposition = f.session.calculate(1L, runAttemptCount = 0, driver = RecordingDriver())

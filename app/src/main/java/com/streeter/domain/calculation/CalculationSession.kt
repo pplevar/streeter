@@ -47,6 +47,15 @@ interface CalculationDriver {
      * alongside it. The session does not care how (or whether) that happens.
      */
     suspend fun <T> whileMatching(block: suspend () -> T): T = block()
+
+    /**
+     * Something worth knowing about afterwards: a dead end, an abort, a failed attempt. Logging
+     * is the driver's job — the session decides, it does not write to logcat.
+     */
+    fun note(
+        message: String,
+        cause: Throwable? = null,
+    ) = Unit
 }
 
 /**
@@ -79,8 +88,16 @@ class CalculationSession
     ) {
         /** Where a walk's matched ways came from, or why there are none. */
         private sealed interface Ways {
-            /** The ways to compute Coverage over, and the length they were measured along. */
-            data class Matched(val wayIds: List<Long>, val distanceM: Double) : Ways
+            /**
+             * The ways to compute Coverage over, the length they were measured along, and — for
+             * a Recorded Walk — the matched [route] still to be stored. It is stored late, after
+             * the walk has been re-checked, so a walk deleted during matching gets no writes.
+             */
+            data class Matched(
+                val wayIds: List<Long>,
+                val distanceM: Double,
+                val route: RouteSegment? = null,
+            ) : Ways
 
             /** A dead end: this walk has no Coverage to compute and never will. */
             data class None(val reason: String) : Ways
@@ -109,14 +126,12 @@ class CalculationSession
                 }
                 driver.report(10, "Loading route data…")
 
-                val walk = walkRepository.getWalkById(walkId) ?: return CalculationDisposition.FAILURE
-                if (walk.status == WalkStatus.DELETED) {
-                    // The walk was deleted while this run was in flight: its Coverage is already
-                    // gone, so writing more of it would resurrect rows for a walk that no longer
-                    // exists. Close the job and stop.
-                    updateJob(walkId) { it.copy(status = JobStatus.DONE) }
+                val walk = walkRepository.getWalkById(walkId)
+                if (walk == null) {
+                    driver.note("Walk $walkId is gone; nothing to calculate")
                     return CalculationDisposition.FAILURE
                 }
+                if (walk.status == WalkStatus.DELETED) return abortDeleted(walkId, driver)
 
                 val ways =
                     if (walk.source == WalkSource.RECORDED) {
@@ -125,10 +140,24 @@ class CalculationSession
                         loadManualSegments(walkId, driver)
                     }
 
+                // Matching takes minutes, and the walk can be deleted throughout. Nothing has
+                // been written yet, so re-reading here is the difference between aborting
+                // cleanly and resurrecting a deleted walk's route and Coverage.
+                if (isGone(walkId)) return abortDeleted(walkId, driver)
+
                 when (ways) {
                     is Ways.Stopped -> return CalculationDisposition.RETRY
-                    is Ways.None -> return completeWithoutCoverage(walkId, ways.reason)
+                    is Ways.None -> {
+                        driver.note("Walk $walkId completes without coverage: ${ways.reason}")
+                        return completeWithoutCoverage(walkId, ways.reason)
+                    }
                     is Ways.Matched -> {
+                        ways.route?.let { route ->
+                            // The matched route replaces whatever a previous run left behind, so
+                            // a recalculation never draws two routes for one walk.
+                            routeSegmentRepository.deleteSegmentsForWalk(walkId)
+                            routeSegmentRepository.insertSegment(route)
+                        }
                         driver.report(50, "Computing street coverage…")
                         coverageEngine.computeAndPersistCoverage(
                             walkId = walkId,
@@ -148,15 +177,18 @@ class CalculationSession
                 // Geometry that cannot be read will not read on the next attempt either, so this
                 // is a dead end rather than a retry: finish the walk without a distance and leave
                 // the reason on the job, instead of stranding it in PENDING_MATCH.
+                driver.note("Unreadable geometry for walk=$walkId; completing without a distance", e)
                 completeWithoutCoverage(walkId, "Unreadable geometry: ${e.message}")
             } catch (e: FileNotFoundException) {
                 // No map assets on this device — retrying cannot conjure them up.
+                driver.note("No map assets for walk=$walkId; completing without coverage", e)
                 completeWithoutCoverage(walkId, "No map assets: ${e.message}")
             } catch (e: CancellationException) {
                 // WorkerStoppedException (a CancellationException) means the OS stopped this job.
                 // WorkManager reschedules it itself; swallowing this would loop forever.
                 throw e
             } catch (e: Exception) {
+                driver.note("Calculation failed for walk=$walkId on attempt $runAttemptCount", e)
                 updateJob(walkId) {
                     it.copy(
                         status = if (WorkRetryPolicy.hasAttemptsLeft(runAttemptCount)) JobStatus.QUEUED else JobStatus.FAILED,
@@ -191,18 +223,17 @@ class CalculationSession
                 }
             driver.report(50, "Route matched…")
 
-            // The matched route replaces whatever a previous run left behind, so a recalculation
-            // never draws two routes for one walk.
-            routeSegmentRepository.deleteSegmentsForWalk(walkId)
-            routeSegmentRepository.insertSegment(
-                RouteSegment(
-                    walkId = walkId,
-                    geometryJson = matched.routeGeometryJson,
-                    matchedWayIds = "[${matched.matchedWayIds.joinToString(",")}]",
-                    segmentOrder = 0,
-                ),
+            return Ways.Matched(
+                wayIds = matched.matchedWayIds,
+                distanceM = matched.distanceM,
+                route =
+                    RouteSegment(
+                        walkId = walkId,
+                        geometryJson = matched.routeGeometryJson,
+                        matchedWayIds = "[${matched.matchedWayIds.joinToString(",")}]",
+                        segmentOrder = 0,
+                    ),
             )
-            return Ways.Matched(matched.matchedWayIds, matched.distanceM)
         }
 
         /** A Manual Walk's ways: the segments the route editor already built. */
@@ -232,6 +263,24 @@ class CalculationSession
             updateJob(walkId) { it.copy(status = JobStatus.DONE, lastError = reason) }
             return CalculationDisposition.SUCCESS
         }
+
+        /**
+         * The walk was deleted while this run was in flight: its Coverage is already gone, so
+         * writing more of it would resurrect rows for a walk that no longer exists. Close the
+         * job and hand the run back as failed — there is nothing left to retry.
+         */
+        private suspend fun abortDeleted(
+            walkId: Long,
+            driver: CalculationDriver,
+        ): CalculationDisposition {
+            driver.note("Walk $walkId was deleted; aborting Calculation")
+            updateJob(walkId) { it.copy(status = JobStatus.DONE) }
+            return CalculationDisposition.FAILURE
+        }
+
+        /** Whether the walk has been deleted — or hard-deleted — since this run started. */
+        private suspend fun isGone(walkId: Long): Boolean =
+            walkRepository.getWalkById(walkId).let { it == null || it.status == WalkStatus.DELETED }
 
         private suspend fun updateJob(
             walkId: Long,

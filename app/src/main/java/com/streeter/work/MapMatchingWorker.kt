@@ -78,6 +78,13 @@ class MapMatchingWorker
 
             override val isStopped: Boolean get() = this@MapMatchingWorker.isStopped
 
+            override fun note(
+                message: String,
+                cause: Throwable?,
+            ) {
+                if (cause == null) Timber.w(message) else Timber.e(cause, message)
+            }
+
             override suspend fun <T> whileMatching(block: suspend () -> T): T =
                 coroutineScope {
                     val heartbeat =
