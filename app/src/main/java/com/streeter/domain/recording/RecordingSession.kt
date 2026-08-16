@@ -28,8 +28,8 @@ import javax.inject.Inject
  *   batch leaves the buffer only once the write has landed, so a failed write costs a retry,
  *   never the points.
  * - **Outlier anchoring.** Each observation is compared against the last *kept* point. A
- *   rejected point never becomes the anchor, so one spike cannot drag the rest of the trace
- *   out with it. Outlier Points are still stored — they are excluded at the read seam.
+ *   rejected point never becomes the anchor, so one Outlier Point cannot drag the rest of the
+ *   trace out with it. Outlier Points are still stored — they are excluded at the read seam.
  * - **Duration.** Accumulated segment by segment across pause/resume, off an injectable [Clock].
  * - **Ending.** The final duration is made durable first, then the walk goes through
  *   [WalkRecalculator], which owns the PENDING_MATCH transition and enqueues the work.
@@ -52,7 +52,7 @@ class RecordingSession
             const val FLUSH_BATCH_SIZE = 50
 
             /** Implied speed above which an observation is an Outlier Point. */
-            const val DEFAULT_MAX_SPEED_KMH = 50f
+            const val MAX_SPEED_KMH = 50f
 
             /** No walk in progress. */
             const val NO_WALK = -1L
@@ -61,8 +61,6 @@ class RecordingSession
         private val mutex = Mutex()
         private val pendingPoints = mutableListOf<GpsPoint>()
         private var lastKeptPoint: GpsPoint? = null
-
-        var maxSpeedKmh: Float = DEFAULT_MAX_SPEED_KMH
 
         /**
          * Called when a batch write fails and the points stay buffered. Logging is the driver's
@@ -127,11 +125,11 @@ class RecordingSession
                 if (!_isRecording.value) return@withLock
                 val anchor = lastKeptPoint
                 val observed = observation.asPoint(walkId)
-                val isOutlier = anchor != null && !GpsOutlierFilter.shouldKeep(anchor, observed, maxSpeedKmh)
+                val isOutlier = anchor != null && !GpsOutlierFilter.shouldKeep(anchor, observed, MAX_SPEED_KMH)
                 val point = observed.copy(isFiltered = isOutlier)
 
                 // Anchor on the last kept point only: an Outlier Point must not become the
-                // reference, or one spike rejects everything that follows it.
+                // reference, or one of them rejects everything that follows it.
                 if (!isOutlier) lastKeptPoint = point
 
                 pendingPoints += point
@@ -143,32 +141,29 @@ class RecordingSession
         /**
          * Pause the walk: make the buffered points durable and bank the segment that just ended.
          */
-        suspend fun pause() =
+        suspend fun pause() {
+            if (!_isRecording.value || _isPaused.value) return
+            // Flip the flag up front, before anything suspends: a RESUME arriving while the
+            // flush is still in flight must see a paused walk, or it is discarded by its guard.
+            _isPaused.value = true
             mutex.withLock {
-                if (!_isRecording.value || _isPaused.value) return@withLock
                 flushLocked()
-                walkRepository.getWalkById(walkId)?.let { walk ->
-                    val now = clock.nowMillis()
-                    walkRepository.updateWalk(
-                        walk.copy(
-                            durationMs = walk.durationMs + walk.runningSegmentMs(now),
-                            lastResumedAt = null,
-                            isPaused = true,
-                            updatedAt = now,
-                        ),
-                    )
-                }
-                _isPaused.value = true
+                bankRunningSegment(walkId, paused = true)
             }
+        }
 
         /**
          * Resume [resumedWalkId] — either the paused walk this session holds, or a recording
          * adopted after process death. Starts a fresh duration segment.
          */
-        suspend fun resume(resumedWalkId: Long) =
+        suspend fun resume(resumedWalkId: Long) {
+            if (_isRecording.value && !_isPaused.value) return
+            // Claim the walk before anything suspends, so a Stop tapped right after Resume sees
+            // a walk in progress instead of racing the database write below.
+            walkId = resumedWalkId
+            _isRecording.value = true
+            _isPaused.value = false
             mutex.withLock {
-                if (_isRecording.value && !_isPaused.value) return@withLock
-                walkId = resumedWalkId
                 val now = clock.nowMillis()
                 walkRepository.getWalkById(resumedWalkId)?.let { walk ->
                     walkRepository.updateWalk(
@@ -179,31 +174,24 @@ class RecordingSession
                         ),
                     )
                 }
-                _isRecording.value = true
-                _isPaused.value = false
             }
+        }
 
         /**
          * End the walk: flush what is buffered, write the final duration, then hand the walk to
          * [WalkRecalculator]. The duration write must land first — the recalculator reloads the
          * walk, so anything written after it would be overwritten.
+         *
+         * If this last write fails there is no later flush to retry it: the failure is reported
+         * through [onFlushFailure] and the walk still ends, so it is calculated and synced from
+         * the points that did become durable.
          */
         suspend fun stop() =
             mutex.withLock {
                 if (walkId == NO_WALK) return@withLock
                 val endedWalkId = walkId
                 flushLocked()
-                walkRepository.getWalkById(endedWalkId)?.let { walk ->
-                    val now = clock.nowMillis()
-                    walkRepository.updateWalk(
-                        walk.copy(
-                            durationMs = walk.durationMs + walk.runningSegmentMs(now),
-                            lastResumedAt = null,
-                            isPaused = false,
-                            updatedAt = now,
-                        ),
-                    )
-                }
+                bankRunningSegment(endedWalkId, paused = false)
                 pendingMatchJobRepository.enqueue(
                     PendingMatchJob(
                         walkId = endedWalkId,
@@ -218,7 +206,6 @@ class RecordingSession
 
                 walkId = NO_WALK
                 lastKeptPoint = null
-                _points.value = emptyList()
                 _isRecording.value = false
                 _isPaused.value = false
             }
@@ -239,8 +226,27 @@ class RecordingSession
             }
         }
 
-        /** Milliseconds of the segment currently running; zero while paused. */
-        private fun Walk.runningSegmentMs(now: Long): Long = lastResumedAt?.let { now - it } ?: 0L
+        /**
+         * Add the segment that has been running since the last resume to the walk's duration and
+         * close it, leaving the walk [paused] or ended. A walk with no running segment (already
+         * paused) keeps its duration, so this is safe to apply twice.
+         */
+        private suspend fun bankRunningSegment(
+            id: Long,
+            paused: Boolean,
+        ) {
+            val walk = walkRepository.getWalkById(id) ?: return
+            val now = clock.nowMillis()
+            val runningSegmentMs = walk.lastResumedAt?.let { now - it } ?: 0L
+            walkRepository.updateWalk(
+                walk.copy(
+                    durationMs = walk.durationMs + runningSegmentMs,
+                    lastResumedAt = null,
+                    isPaused = paused,
+                    updatedAt = now,
+                ),
+            )
+        }
 
         private fun GpsObservation.asPoint(walkId: Long) =
             GpsPoint(

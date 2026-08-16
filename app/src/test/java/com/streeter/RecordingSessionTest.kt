@@ -1,10 +1,15 @@
 package com.streeter
 
+import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.recording.GpsObservation
 import com.streeter.domain.recording.RecordingSession
+import com.streeter.domain.repository.WalkRepository
 import com.streeter.domain.work.WalkRecalculator
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -25,15 +30,17 @@ class RecordingSessionTest {
     private val jobRepository = FakePendingMatchJobRepository()
     private val scheduler = FakeWalkWorkScheduler()
 
-    private fun session(recalculatorScheduler: FakeWalkWorkScheduler = scheduler) =
-        RecordingSession(
-            walkRepository = walkRepository,
-            gpsPointRepository = gpsPointRepository,
-            pendingMatchJobRepository = jobRepository,
-            walkRecalculator = WalkRecalculator(walkRepository, recalculatorScheduler),
-            clock = clock,
-            wakeGuard = NoopWakeGuard,
-        )
+    private fun session(
+        recalculatorScheduler: FakeWalkWorkScheduler = scheduler,
+        walkRepository: WalkRepository = this.walkRepository,
+    ) = RecordingSession(
+        walkRepository = walkRepository,
+        gpsPointRepository = gpsPointRepository,
+        pendingMatchJobRepository = jobRepository,
+        walkRecalculator = WalkRecalculator(walkRepository, recalculatorScheduler),
+        clock = clock,
+        wakeGuard = NoopWakeGuard,
+    )
 
     /** ~22 m per 0.0002° of latitude; at a 10 s cadence that is a plausible ~8 km/h. */
     private fun observation(
@@ -98,6 +105,24 @@ class RecordingSessionTest {
         }
 
     @Test
+    fun `a failed final write is reported rather than swallowed`() =
+        runBlocking {
+            // Ending the walk is the last flush there is, so a failure here cannot be retried —
+            // it must at least be surfaced, and the walk must still end.
+            val failures = mutableListOf<Throwable>()
+            val session = session()
+            session.onFlushFailure = { failures += it }
+            val walkId = session.start()
+
+            session.record(observation(lat = 0.0, atMs = 0L))
+            gpsPointRepository.failWrites = true
+            session.stop()
+
+            assertEquals(1, failures.size)
+            assertEquals(WalkStatus.PENDING_MATCH, walkRepository.getWalkById(walkId)!!.status)
+        }
+
+    @Test
     fun `a rejected Outlier Point does not become the anchor for the next comparison`() =
         runBlocking {
             val session = session()
@@ -106,9 +131,9 @@ class RecordingSessionTest {
             session.recordAll(
                 observation(lat = 0.0000, atMs = 0L),
                 observation(lat = 0.0002, atMs = 10_000L),
-                // ~5.5 km in 10 s — implausible, so rejected.
+                // ~5.5 km in 10 s — implausible, so rejected as an Outlier Point.
                 observation(lat = 0.0500, atMs = 20_000L),
-                // Plausible from the last *kept* point, implausible from the spike.
+                // Plausible from the last *kept* point, implausible from the Outlier Point.
                 observation(lat = 0.0004, atMs = 30_000L),
             )
 
@@ -210,6 +235,44 @@ class RecordingSessionTest {
         }
 
     @Test
+    fun `resume claims the walk before its database write lands`() =
+        runBlocking {
+            // The UI reads the id back to decide what Stop applies to; master set it
+            // synchronously, so a Stop tapped right after Resume must not fall into a gap.
+            val gated = GatedWalkRepository(walkRepository)
+            val session = session(walkRepository = gated)
+            val walkId = session.start()
+            session.pause()
+            gated.gateWrites = true
+
+            val resuming = launch { session.resume(walkId) }
+            yield()
+
+            assertEquals(walkId, session.walkId)
+            assertFalse(session.isPaused.value)
+            gated.gate.complete(Unit)
+            resuming.join()
+        }
+
+    @Test
+    fun `pause marks the walk paused before the flush lands`() =
+        runBlocking {
+            // A Resume arriving while the flush is still running is discarded by its own guard
+            // unless the pause is already visible.
+            val gated = GatedWalkRepository(walkRepository)
+            val session = session(walkRepository = gated)
+            session.start()
+            gated.gateWrites = true
+
+            val pausing = launch { session.pause() }
+            yield()
+
+            assertTrue(session.isPaused.value)
+            gated.gate.complete(Unit)
+            pausing.join()
+        }
+
+    @Test
     fun `ending a walk goes through the recalculation module`() =
         runBlocking {
             val session = session()
@@ -270,4 +333,18 @@ class RecordingSessionTest {
             assertTrue(gpsPointRepository.inserted.isEmpty())
             assertTrue(session.points.value.isEmpty())
         }
+}
+
+/** Holds every [updateWalk] at [gate] once [gateWrites] is on, so a test can observe the
+ * session's state while a write is still in flight. */
+private class GatedWalkRepository(
+    private val delegate: WalkRepository,
+) : WalkRepository by delegate {
+    val gate = CompletableDeferred<Unit>()
+    var gateWrites = false
+
+    override suspend fun updateWalk(walk: Walk) {
+        if (gateWrites) gate.await()
+        delegate.updateWalk(walk)
+    }
 }

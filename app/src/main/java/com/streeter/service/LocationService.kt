@@ -129,12 +129,11 @@ class LocationService : LifecycleService() {
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification(paused = false))
 
-        lifecycleScope.launch {
-            session.resume(walkId)
-            // Only now can the session take fixes; starting updates earlier would drop them.
-            startLocationUpdates()
-            Timber.d("Walk resumed, id=%d", walkId)
-        }
+        // The session claims the walk before it suspends, so location updates can start right
+        // away — the fixes queue behind the resume write rather than being dropped.
+        lifecycleScope.launch { session.resume(walkId) }
+        startLocationUpdates()
+        Timber.d("Walk resumed, id=%d", walkId)
     }
 
     private fun stopWalk() {
