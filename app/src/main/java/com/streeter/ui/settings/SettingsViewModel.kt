@@ -4,9 +4,9 @@ import android.content.Context
 import android.content.SharedPreferences
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.streeter.data.remote.auth.SyncAuthStatus
 import com.streeter.data.remote.auth.SyncAuthTokenStore
 import com.streeter.domain.engine.RoutingEngine
+import com.streeter.domain.sync.SyncAuthStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow

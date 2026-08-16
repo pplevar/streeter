@@ -2,8 +2,6 @@ package com.streeter.ui.history
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.ExistingWorkPolicy
-import androidx.work.WorkManager
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.SyncStatus
@@ -14,7 +12,6 @@ import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.StreetRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.domain.work.WalkWorkScheduler
-import com.streeter.work.PullSyncWorker
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -51,7 +48,6 @@ class HistoryViewModel
         private val streetRepository: StreetRepository,
         private val routeSegmentRepository: RouteSegmentRepository,
         private val gpsPointRepository: GpsPointRepository,
-        private val workManager: WorkManager,
         private val walkWorkScheduler: WalkWorkScheduler,
     ) : ViewModel() {
         private val _uiState = MutableStateFlow(HistoryUiState())
@@ -156,11 +152,7 @@ class HistoryViewModel
             }
 
         fun triggerPullSync() {
-            workManager.enqueueUniqueWork(
-                PullSyncWorker.UNIQUE_WORK_NAME,
-                ExistingWorkPolicy.REPLACE,
-                PullSyncWorker.buildOneTimeRequest(),
-            )
+            walkWorkScheduler.enqueuePull()
         }
 
         fun triggerSync() {

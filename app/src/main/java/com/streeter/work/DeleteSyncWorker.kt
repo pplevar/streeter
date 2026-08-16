@@ -2,20 +2,14 @@ package com.streeter.work
 
 import android.content.Context
 import androidx.hilt.work.HiltWorker
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
-import androidx.work.CoroutineWorker
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkerParameters
-import androidx.work.workDataOf
 import com.streeter.domain.repository.RemoteSyncRepository
+import com.streeter.domain.sync.SyncOperation
+import com.streeter.domain.sync.SyncOutcomeHandler
 import com.streeter.domain.work.WalkWork
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
-import timber.log.Timber
-import java.util.concurrent.TimeUnit
 
 /**
  * Dispatches a tombstoned walk's pending server delete (issue #22, ADR-0003).
@@ -30,37 +24,17 @@ class DeleteSyncWorker
         @Assisted context: Context,
         @Assisted params: WorkerParameters,
         private val remoteSyncRepository: RemoteSyncRepository,
-        private val syncFailureHandler: SyncFailureHandler,
-    ) : CoroutineWorker(context, params) {
-        override suspend fun doWork(): Result {
-            val walkId = inputData.getLong(KEY_WALK_ID, -1L)
-            if (walkId == -1L) return Result.failure()
+        outcomes: SyncOutcomeHandler,
+    ) : SyncOperationWorker<SyncOperation.Delete>(context, params, outcomes) {
+        override fun operation(): SyncOperation.Delete? = inputWalkId()?.let(SyncOperation::Delete)
 
-            return remoteSyncRepository.deleteWalk(walkId).fold(
-                onSuccess = {
-                    syncFailureHandler.onSuccess()
-                    Result.success()
-                },
-                onFailure = { throwable ->
-                    Timber.w(throwable, "Delete dispatch failed for walk $walkId, attempt $runAttemptCount")
-                    if (syncFailureHandler.onFailure(throwable, runAttemptCount)) Result.retry() else Result.failure()
-                },
+        override suspend fun perform(operation: SyncOperation.Delete): kotlin.Result<Unit> =
+            remoteSyncRepository.deleteWalk(
+                operation.walkId,
             )
-        }
 
         companion object {
-            const val KEY_WALK_ID = "walk_id"
-
             fun buildRequest(walkId: Long): OneTimeWorkRequest =
-                OneTimeWorkRequestBuilder<DeleteSyncWorker>()
-                    .setInputData(workDataOf(KEY_WALK_ID to walkId))
-                    .setConstraints(
-                        Constraints.Builder()
-                            .setRequiredNetworkType(NetworkType.CONNECTED)
-                            .build(),
-                    )
-                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
-                    .addTag(WalkWork.deleteName(walkId))
-                    .build()
+                SyncOperationWorker.buildRequest<DeleteSyncWorker>(walkId = walkId, tag = WalkWork.deleteName(walkId))
         }
     }

@@ -1,4 +1,4 @@
-package com.streeter.data.remote.auth
+package com.streeter.domain.sync
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow

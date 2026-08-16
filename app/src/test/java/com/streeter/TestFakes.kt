@@ -298,6 +298,8 @@ internal open class FakeWalkWorkScheduler : WalkWorkScheduler {
     val calculationCancelled = mutableListOf<Long>()
     val syncEnqueued = mutableListOf<Long>()
     val deleteEnqueued = mutableListOf<Long>()
+    var pullEnqueued = 0
+    var periodicPullScheduled = 0
 
     override fun enqueueNewWalkProcessing(walkId: Long) {
         newWalkProcessing += walkId
@@ -317,6 +319,14 @@ internal open class FakeWalkWorkScheduler : WalkWorkScheduler {
 
     override fun enqueueDelete(walkId: Long) {
         deleteEnqueued += walkId
+    }
+
+    override fun enqueuePull() {
+        pullEnqueued++
+    }
+
+    override fun schedulePeriodicPull() {
+        periodicPullScheduled++
     }
 }
 

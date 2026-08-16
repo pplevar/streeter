@@ -1,6 +1,6 @@
 package com.streeter
 
-import com.streeter.data.remote.auth.SyncAuthStatus
+import com.streeter.domain.sync.SyncAuthStatus
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertFalse

@@ -16,6 +16,7 @@ import com.streeter.domain.repository.PendingMatchJobRepository
 import com.streeter.domain.repository.RouteSegmentRepository
 import com.streeter.domain.repository.WalkRepository
 import com.streeter.domain.work.WalkCalculationFinalizer
+import com.streeter.domain.work.WorkRetryPolicy
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
@@ -52,7 +53,11 @@ class MapMatchingWorker
                 OneTimeWorkRequestBuilder<MapMatchingWorker>()
                     .setInputData(workDataOf(KEY_WALK_ID to walkId))
                     .setConstraints(Constraints.NONE)
-                    .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30_000L, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    .setBackoffCriteria(
+                        BackoffPolicy.EXPONENTIAL,
+                        WorkRetryPolicy.BACKOFF_SECONDS,
+                        java.util.concurrent.TimeUnit.SECONDS,
+                    )
                     .build()
         }
 
@@ -208,13 +213,13 @@ class MapMatchingWorker
                     pendingMatchJobRepository.getJobForWalk(walkId)?.let {
                         pendingMatchJobRepository.updateJob(
                             it.copy(
-                                status = if (retries >= 3) JobStatus.FAILED else JobStatus.QUEUED,
+                                status = if (WorkRetryPolicy.hasAttemptsLeft(retries)) JobStatus.QUEUED else JobStatus.FAILED,
                                 retryCount = retries,
                                 lastError = e.message,
                             ),
                         )
                     }
-                    if (retries >= 3) Result.failure() else Result.retry()
+                    if (WorkRetryPolicy.hasAttemptsLeft(retries)) Result.retry() else Result.failure()
                 }
             }
 

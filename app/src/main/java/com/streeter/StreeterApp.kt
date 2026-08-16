@@ -4,10 +4,8 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.work.Configuration
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.WorkManager
+import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.lifecycle.AppForegroundObserver
-import com.streeter.work.PullSyncWorker
 import dagger.hilt.android.HiltAndroidApp
 import timber.log.Timber
 import javax.inject.Inject
@@ -18,7 +16,7 @@ class StreeterApp : Application(), Configuration.Provider {
     lateinit var workerFactory: HiltWorkerFactory
 
     @Inject
-    lateinit var workManager: WorkManager
+    lateinit var walkWorkScheduler: WalkWorkScheduler
 
     @Inject
     lateinit var appForegroundObserver: AppForegroundObserver
@@ -37,11 +35,7 @@ class StreeterApp : Application(), Configuration.Provider {
             Timber.plant(ReleaseTree())
         }
         ProcessLifecycleOwner.get().lifecycle.addObserver(appForegroundObserver)
-        workManager.enqueueUniquePeriodicWork(
-            "pull_sync_periodic",
-            ExistingPeriodicWorkPolicy.KEEP,
-            PullSyncWorker.buildPeriodicRequest(),
-        )
+        walkWorkScheduler.schedulePeriodicPull()
     }
 
     private class ReleaseTree : Timber.Tree() {
