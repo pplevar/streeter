@@ -77,7 +77,7 @@ fun StreetDetailScreen(
                                         .clip(RoundedCornerShape(28.dp)),
                                 layers =
                                     listOf(
-                                        MapLayer.MatchedRoute(uiState.combinedGeometryJson),
+                                        MapLayer.Route(uiState.combinedGeometryJson),
                                         MapLayer.HighlightedWalk(uiState.selectedWalkGeometryJson),
                                     ),
                                 fitBoundsTo = geometryForBounds,

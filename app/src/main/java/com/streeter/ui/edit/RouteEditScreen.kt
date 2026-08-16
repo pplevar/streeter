@@ -141,7 +141,7 @@ fun RouteEditScreen(
                         modifier = Modifier.fillMaxSize(),
                         layers =
                             listOf(
-                                MapLayer.MatchedRoute(uiState.routeGeometryJson),
+                                MapLayer.Route(uiState.routeGeometryJson),
                                 MapLayer.RoutePreview(uiState.previewGeometryJson),
                             ),
                         fitBoundsTo = uiState.routeGeometryJson,

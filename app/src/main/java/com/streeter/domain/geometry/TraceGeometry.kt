@@ -141,15 +141,28 @@ object TraceGeometry {
         """{"type":"Feature","geometry":{"type":"LineString","coordinates":[${coordinateList(points)}]},"properties":{}}"""
 
     /**
+     * [point] as a `Feature` wrapping a `Point`, carrying [properties] the renderer hands back
+     * when the user taps it — the way a dot on the map answers with what it stands for.
+     */
+    fun pointFeature(
+        point: LatLng,
+        properties: Map<String, Long> = emptyMap(),
+    ): String {
+        val props = properties.entries.joinToString(",") { (key, value) -> """"$key":$value""" }
+        return """{"type":"Feature","geometry":{"type":"Point","coordinates":[${point.lng},${point.lat}]},"properties":{$props}}"""
+    }
+
+    /** [features] gathered into one `FeatureCollection`; no features is [EMPTY_FEATURE_COLLECTION]. */
+    fun collect(features: List<String>): String =
+        if (features.isEmpty()) EMPTY_FEATURE_COLLECTION else """{"type":"FeatureCollection","features":[${features.joinToString(",")}]}"""
+
+    /**
      * One `LineString` feature per trace, never one line across traces: joining them would draw
      * a spurious straight segment from the end of one trace to the start of the next.
      *
      * A trace of fewer than two points is no line at all and contributes no feature.
      */
-    fun featureCollection(traces: List<List<LatLng>>): String {
-        val features = traces.filter { it.size >= 2 }.joinToString(",") { lineStringFeature(it) }
-        return if (features.isEmpty()) EMPTY_FEATURE_COLLECTION else """{"type":"FeatureCollection","features":[$features]}"""
-    }
+    fun featureCollection(traces: List<List<LatLng>>): String = collect(traces.filter { it.size >= 2 }.map { lineStringFeature(it) })
 
     /**
      * The recorded traces of several walks as one `LineString` feature per walk, walks in the

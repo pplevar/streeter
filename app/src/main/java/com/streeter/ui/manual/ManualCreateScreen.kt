@@ -104,7 +104,7 @@ fun ManualCreateScreen(
         // Full-screen map
         MapLibreMapView(
             modifier = Modifier.fillMaxSize(),
-            layers = listOf(MapLayer.MatchedRoute(uiState.accumulatedGeometryJson)),
+            layers = listOf(MapLayer.Route(uiState.accumulatedGeometryJson)),
             initialLatLng = initialLatLng,
             onCameraMove = { mapLatLng ->
                 viewModel.onCameraMove(

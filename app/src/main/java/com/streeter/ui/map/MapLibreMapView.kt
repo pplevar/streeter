@@ -90,7 +90,10 @@ fun MapLibreMapView(
 ) {
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
     var mapView by remember { mutableStateOf<MapView?>(null) }
-    val plan = remember(layers) { mapPlanOf(layers) }
+    val plan = mapPlanOf(layers)
+    // What each source is already holding, so a recomposition that changed one layer does not
+    // hand the renderer all eight payloads again.
+    val applied = remember { mutableMapOf<MapSlot, String>() }
 
     // Every value the map's async callbacks read is tracked the same way, so a callback that
     // arrives after the first composition is the one that gets invoked.
@@ -136,9 +139,7 @@ fun MapLibreMapView(
     DisposableEffect(context) {
         val callbacks =
             object : ComponentCallbacks2 {
-                override fun onTrimMemory(level: Int) {
-                    if (level >= ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW) mapView?.onLowMemory()
-                }
+                override fun onTrimMemory(level: Int) {}
 
                 override fun onLowMemory() {
                     mapView?.onLowMemory()
@@ -156,6 +157,12 @@ fun MapLibreMapView(
             MapView(ctx).also { mapView = it }.apply {
                 // Empty on a first run, and the renderer treats an unmarked bundle as one.
                 onCreate(mapState)
+                // A map composed into an owner that is already running gets no further ON_START
+                // or ON_RESUME to catch, so it is walked up to where the owner already is.
+                lifecycleOwner.lifecycle.currentState.let { state ->
+                    if (state.isAtLeast(Lifecycle.State.STARTED)) onStart()
+                    if (state.isAtLeast(Lifecycle.State.RESUMED)) onResume()
+                }
                 layoutParams =
                     ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -171,9 +178,9 @@ fun MapLibreMapView(
                         addSlotLayers(style)
                         // Apply whatever the screen already declared — handles the common case
                         // where the DB finishes before the map style does.
-                        applyPlan(map, latestPlan.value)
-                        // Center on the initial position when there is no geometry to frame.
-                        if (initialLatLng != null && latestPlan.value.drawsNothing()) {
+                        applyPlan(map, latestPlan.value, applied)
+                        // Center on the initial position when the screen has no walk to frame.
+                        if (initialLatLng != null && latestPlan.value.hasNoWalkYet) {
                             map.moveCamera(
                                 CameraUpdateFactory.newCameraPosition(
                                     CameraPosition.Builder().target(initialLatLng).zoom(INITIAL_ZOOM).build(),
@@ -184,12 +191,14 @@ fun MapLibreMapView(
                         map.cameraPosition.target?.let { latestOnCameraMove.value?.invoke(it) }
                         latestOnMapReady.value(map)
                     }
+                    // Registered unconditionally so a screen that gains a handler after the
+                    // first composition is heard; a tap is only consumed if someone wanted it.
                     map.addOnMapClickListener { latLng ->
-                        latestPlan.value.onPointTap?.invoke(
-                            pointIdAt(map, map.projection.toScreenLocation(latLng), tapRadiusPx),
-                        )
-                        latestOnMapClick.value?.invoke(latLng)
-                        true
+                        val onPointTap = latestPlan.value.onPointTap
+                        val onClick = latestOnMapClick.value
+                        onPointTap?.invoke(pointIdAt(map, map.projection.toScreenLocation(latLng), tapRadiusPx))
+                        onClick?.invoke(latLng)
+                        onPointTap != null || onClick != null
                     }
                     map.addOnCameraMoveListener {
                         map.cameraPosition.target?.let { latestOnCameraMove.value?.invoke(it) }
@@ -201,12 +210,12 @@ fun MapLibreMapView(
         update = { _ ->
             val map = mapLibreMap ?: return@AndroidView
             // Sources may not exist yet if the style hasn't loaded; applyPlan returns early if so.
-            applyPlan(map, plan)
+            applyPlan(map, plan, applied)
             if (latestFollowLocation.value) {
-                headOfTrace(plan)?.let { head ->
+                plan.followTarget?.let { head ->
                     map.animateCamera(
                         CameraUpdateFactory.newCameraPosition(
-                            CameraPosition.Builder().target(head).zoom(FOLLOW_ZOOM).build(),
+                            CameraPosition.Builder().target(LatLng(head.lat, head.lng)).zoom(FOLLOW_ZOOM).build(),
                         ),
                     )
                 }
@@ -222,16 +231,6 @@ fun MapLibreMapView(
         fitBoundsToGeometryJson(map, geoJson)
     }
 }
-
-/** True when nothing the screen declared has any geometry to show yet. */
-private fun MapPlan.drawsNothing(): Boolean = payloads.values.all { it == TraceGeometry.EMPTY_FEATURE_COLLECTION }
-
-/**
- * Where a followed camera should sit: the position dot, which is the one thing on the map that
- * already means "where the walker is now". A screen that does not draw it is not followed.
- */
-private fun headOfTrace(plan: MapPlan): LatLng? =
-    TraceGeometry.parseOrEmpty(plan.payloadFor(MapSlot.CURRENT_POSITION)).lastOrNull()?.let { LatLng(it.lat, it.lng) }
 
 /**
  * Adds one source and its layers per [MapSlot], in declaration order.
@@ -263,7 +262,7 @@ private fun layersFor(slot: MapSlot): List<Layer> =
                     lineJoin("round"),
                 ),
             )
-        MapSlot.TRACE, MapSlot.MATCHED_ROUTE ->
+        MapSlot.TRACE, MapSlot.ROUTE ->
             listOf(
                 LineLayer(slot.layerId, slot.sourceId).withProperties(
                     lineColor("#3B82F6"),
@@ -320,14 +319,22 @@ private fun layersFor(slot: MapSlot): List<Layer> =
 
 private val MapSlot.layerId: String get() = "${name.lowercase()}_layer"
 
-/** Hands each slot's source the payload [plan] decided on. No style yet means nothing to update. */
+/**
+ * Hands each slot's source the payload [plan] decided on, skipping the slots already holding it
+ * — [applied] is what the renderer was last given. No style yet means nothing to update.
+ */
 private fun applyPlan(
     map: MapLibreMap,
     plan: MapPlan,
+    applied: MutableMap<MapSlot, String>,
 ) {
     val style = map.style ?: return
     for (slot in MapSlot.entries) {
-        style.getSourceAs<GeoJsonSource>(slot.sourceId)?.setGeoJson(plan.payloadFor(slot))
+        val payload = plan.payloadFor(slot)
+        if (applied[slot] == payload) continue
+        val source = style.getSourceAs<GeoJsonSource>(slot.sourceId) ?: continue
+        source.setGeoJson(payload)
+        applied[slot] = payload
     }
 }
 

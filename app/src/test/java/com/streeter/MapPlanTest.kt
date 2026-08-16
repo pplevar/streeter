@@ -6,6 +6,7 @@ import com.streeter.ui.map.MapLayer
 import com.streeter.ui.map.MapSlot
 import com.streeter.ui.map.mapPlanOf
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -36,6 +37,11 @@ class MapPlanTest {
 
     private val empty = TraceGeometry.EMPTY_FEATURE_COLLECTION
 
+    private fun lineAt(
+        lat: Double,
+        lng: Double,
+    ) = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[[$lng,$lat],[$lng,$lat]]},"properties":{}}"""
+
     // --- Draw order -----------------------------------------------------------------------
 
     @Test
@@ -56,8 +62,8 @@ class MapPlanTest {
     @Test
     fun `an uncommitted edit is drawn over the route it would replace`() {
         val order = MapSlot.entries
-        assertTrue(order.indexOf(MapSlot.ROUTE_PREVIEW) > order.indexOf(MapSlot.MATCHED_ROUTE))
-        assertTrue(order.indexOf(MapSlot.HIGHLIGHTED_WALK) > order.indexOf(MapSlot.MATCHED_ROUTE))
+        assertTrue(order.indexOf(MapSlot.ROUTE_PREVIEW) > order.indexOf(MapSlot.ROUTE))
+        assertTrue(order.indexOf(MapSlot.HIGHLIGHTED_WALK) > order.indexOf(MapSlot.ROUTE))
     }
 
     // --- Undeclared slots -----------------------------------------------------------------
@@ -73,11 +79,11 @@ class MapPlanTest {
 
     @Test
     fun `a slot a screen stops declaring is cleared rather than left stale`() {
-        val before = mapPlanOf(listOf(MapLayer.MatchedRoute("""{"type":"Feature","geometry":null,"properties":{}}""")))
+        val before = mapPlanOf(listOf(MapLayer.Route("""{"type":"Feature","geometry":null,"properties":{}}""")))
         val after = mapPlanOf(listOf(MapLayer.Trace(listOf(point(1, 1.0, 2.0), point(2, 1.1, 2.1)))))
 
-        assertTrue(before.payloadFor(MapSlot.MATCHED_ROUTE) != empty)
-        assertEquals(empty, after.payloadFor(MapSlot.MATCHED_ROUTE))
+        assertTrue(before.payloadFor(MapSlot.ROUTE) != empty)
+        assertEquals(empty, after.payloadFor(MapSlot.ROUTE))
     }
 
     // --- The trace ------------------------------------------------------------------------
@@ -137,6 +143,51 @@ class MapPlanTest {
         assertEquals(empty, mapPlanOf(listOf(MapLayer.CurrentPosition(emptyList()))).payloadFor(MapSlot.CURRENT_POSITION))
     }
 
+    // --- What the camera is told ----------------------------------------------------------
+
+    @Test
+    fun `a followed camera is given the newest observation, not a payload to re-read`() {
+        val plan =
+            mapPlanOf(
+                listOf(
+                    MapLayer.Trace(listOf(point(1, 55.0, 37.0), point(2, 55.5, 37.5))),
+                    MapLayer.CurrentPosition(listOf(point(1, 55.0, 37.0), point(2, 55.5, 37.5))),
+                ),
+            )
+
+        assertEquals(55.5, plan.followTarget!!.lat, 1e-9)
+        assertEquals(37.5, plan.followTarget!!.lng, 1e-9)
+    }
+
+    @Test
+    fun `a screen that draws the line without the dot is still followable`() {
+        val plan = mapPlanOf(listOf(MapLayer.Trace(listOf(point(1, 55.0, 37.0), point(2, 55.5, 37.5)))))
+
+        assertEquals(55.5, plan.followTarget!!.lat, 1e-9)
+    }
+
+    @Test
+    fun `other walks drawn as history are not a walk of the screen's own`() {
+        // The recording screen always draws history, and must still open at the user's location.
+        val plan =
+            mapPlanOf(
+                listOf(
+                    MapLayer.TraceHistory(lineAt(10.0, 20.0)),
+                    MapLayer.Trace(emptyList()),
+                ),
+            )
+
+        assertTrue(plan.hasNoWalkYet)
+        assertNull(plan.followTarget)
+    }
+
+    @Test
+    fun `a screen with a trace or a route of its own has a walk to frame`() {
+        assertFalse(mapPlanOf(listOf(MapLayer.Trace(listOf(point(1, 55.0, 37.0))))).hasNoWalkYet)
+        assertFalse(mapPlanOf(listOf(MapLayer.Route(lineAt(55.0, 37.0)))).hasNoWalkYet)
+        assertTrue(mapPlanOf(listOf(MapLayer.Route(null))).hasNoWalkYet)
+    }
+
     // --- The points editor ----------------------------------------------------------------
 
     @Test
@@ -172,11 +223,6 @@ class MapPlanTest {
 
     // --- The two concepts that used to share a slot ---------------------------------------
 
-    private fun lineAt(
-        lat: Double,
-        lng: Double,
-    ) = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[[$lng,$lat],[$lng,$lat]]},"properties":{}}"""
-
     @Test
     fun `a highlighted walk and an uncommitted edit are different layers`() {
         val plan =
@@ -193,9 +239,9 @@ class MapPlanTest {
 
     @Test
     fun `a layer declared with no geometry yet draws nothing`() {
-        val plan = mapPlanOf(listOf(MapLayer.MatchedRoute(null), MapLayer.TraceHistory(null)))
+        val plan = mapPlanOf(listOf(MapLayer.Route(null), MapLayer.TraceHistory(null)))
 
-        assertEquals(empty, plan.payloadFor(MapSlot.MATCHED_ROUTE))
+        assertEquals(empty, plan.payloadFor(MapSlot.ROUTE))
         assertEquals(empty, plan.payloadFor(MapSlot.HISTORY))
     }
 

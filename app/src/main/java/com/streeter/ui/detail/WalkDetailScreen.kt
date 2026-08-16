@@ -196,7 +196,7 @@ fun WalkDetailScreen(
                                 layers =
                                     listOf(
                                         MapLayer.Trace(uiState.gpsPoints),
-                                        MapLayer.MatchedRoute(uiState.routeGeometryJson),
+                                        MapLayer.Route(uiState.routeGeometryJson),
                                     ),
                                 fitBoundsTo = geometryForBounds,
                                 onMapReady = { map ->

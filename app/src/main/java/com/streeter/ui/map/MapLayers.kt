@@ -2,6 +2,7 @@ package com.streeter.ui.map
 
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.toLatLng
 
 /**
@@ -21,10 +22,10 @@ enum class MapSlot {
     /** The head of a live trace — where the walker is now. */
     CURRENT_POSITION,
 
-    /** A route the screen already holds as GeoJSON: a matched route, or streets drawn together. */
-    MATCHED_ROUTE,
+    /** A walk's route: matched, drawn by hand, or several walks' routes shown together. */
+    ROUTE,
 
-    /** One walk singled out of what [MATCHED_ROUTE] draws. */
+    /** One walk singled out of what [ROUTE] draws. */
     HIGHLIGHTED_WALK,
 
     /** An edit the user has not committed yet, over the route it would replace. */
@@ -43,8 +44,10 @@ enum class MapSlot {
 /**
  * What a screen wants drawn, named in the app's own terms rather than after a renderer slot.
  *
- * A screen lists the layers it wants and leaves out the rest; there is no opting out by passing
- * null or an empty list to a parameter it does not use.
+ * A screen lists the layers it wants and leaves out the rest. A layer whose geometry has not
+ * loaded yet is still declared, with a null payload: "this screen draws a route, which is not
+ * ready" is a different statement from "this screen has no route layer", and only the first is
+ * true while a walk is loading.
  */
 sealed interface MapLayer {
     /** The walk's own GPS Trace, as a line. Outlier Points are not drawn (see CONTEXT.md). */
@@ -62,13 +65,16 @@ sealed interface MapLayer {
         val points: List<GpsPoint>,
     ) : MapLayer
 
-    /** A route the screen holds as GeoJSON: one walk's matched route, or a street's walks combined. */
-    data class MatchedRoute(
+    /**
+     * A route the screen holds as GeoJSON: one walk's matched route, a Manual Walk's routed
+     * path, or every walk that covered a street drawn together.
+     */
+    data class Route(
         val geoJson: String?,
     ) : MapLayer
 
     /**
-     * One walk drawn out of the many that [MatchedRoute] shows — the street screen's selection.
+     * One walk drawn out of the many that [Route] shows — the street screen's selection.
      *
      * Distinct from [RoutePreview] even though both sit above the route: this is a highlight of
      * something already saved, not an edit awaiting a decision.
@@ -95,8 +101,8 @@ sealed interface MapLayer {
 }
 
 /**
- * What the renderer should be holding: one payload per slot, plus the callbacks the declared
- * layers brought with them.
+ * What the renderer should be holding: one payload per slot, plus what the declared layers said
+ * about the camera and about taps.
  *
  * Every slot is present — a slot no screen asked for carries an empty payload rather than being
  * absent — so applying a plan also clears whatever the previous plan drew there.
@@ -104,6 +110,17 @@ sealed interface MapLayer {
 data class MapPlan(
     val payloads: Map<MapSlot, String>,
     val onPointTap: ((Long?) -> Unit)? = null,
+    /**
+     * Where a followed camera belongs: the head of the walk being recorded. Read from the
+     * points rather than from a payload, so following never re-parses what was just written.
+     */
+    val followTarget: LatLng? = null,
+    /**
+     * True when the screen has no walk of its own to show yet — so a screen that opens at a
+     * place rather than at a route may still centre itself. Other walks drawn as history are
+     * context, not a walk of one's own, and do not count.
+     */
+    val hasNoWalkYet: Boolean = true,
 ) {
     fun payloadFor(slot: MapSlot): String = payloads.getValue(slot)
 }
@@ -121,43 +138,60 @@ const val POINT_ID_PROPERTY = "pointId"
 fun mapPlanOf(layers: List<MapLayer>): MapPlan {
     val payloads = MapSlot.entries.associateWith { TraceGeometry.EMPTY_FEATURE_COLLECTION }.toMutableMap()
     var onPointTap: ((Long?) -> Unit)? = null
+    var traceHead: LatLng? = null
+    var positionHead: LatLng? = null
+    var hasNoWalkYet = true
     for (layer in layers) {
         when (layer) {
-            is MapLayer.Trace -> payloads[MapSlot.TRACE] = traceLine(layer.points)
+            is MapLayer.Trace -> {
+                val drawn = layer.points.drawable()
+                payloads[MapSlot.TRACE] = traceLine(drawn)
+                traceHead = drawn.lastOrNull()?.toLatLng()
+                hasNoWalkYet = hasNoWalkYet && drawn.isEmpty()
+            }
             is MapLayer.TraceHistory -> payloads[MapSlot.HISTORY] = layer.geoJson.orEmptyCollection()
-            is MapLayer.CurrentPosition -> payloads[MapSlot.CURRENT_POSITION] = currentPosition(layer.points)
-            is MapLayer.MatchedRoute -> payloads[MapSlot.MATCHED_ROUTE] = layer.geoJson.orEmptyCollection()
+            is MapLayer.CurrentPosition -> {
+                val head = layer.points.drawable().lastOrNull()
+                payloads[MapSlot.CURRENT_POSITION] = head?.let { TraceGeometry.pointFeature(it.toLatLng()) }.orEmptyCollection()
+                positionHead = head?.toLatLng()
+                hasNoWalkYet = hasNoWalkYet && head == null
+            }
+            is MapLayer.Route -> {
+                payloads[MapSlot.ROUTE] = layer.geoJson.orEmptyCollection()
+                hasNoWalkYet = hasNoWalkYet && layer.geoJson == null
+            }
             is MapLayer.HighlightedWalk -> payloads[MapSlot.HIGHLIGHTED_WALK] = layer.geoJson.orEmptyCollection()
             is MapLayer.RoutePreview -> payloads[MapSlot.ROUTE_PREVIEW] = layer.geoJson.orEmptyCollection()
             is MapLayer.TracePoints -> {
-                payloads[MapSlot.TRACE_POINTS] = pointDots(layer.points)
-                payloads[MapSlot.SELECTED_POINT] = layer.selected?.let(::pointFeature).orEmptyCollection()
+                val drawn = layer.points.drawable()
+                payloads[MapSlot.TRACE_POINTS] = TraceGeometry.collect(drawn.map { it.dotFeature() })
+                payloads[MapSlot.SELECTED_POINT] =
+                    layer.selected?.let { TraceGeometry.pointFeature(it.toLatLng()) }.orEmptyCollection()
                 onPointTap = layer.onTap
+                hasNoWalkYet = hasNoWalkYet && drawn.isEmpty()
             }
         }
     }
-    return MapPlan(payloads = payloads, onPointTap = onPointTap)
+    return MapPlan(
+        payloads = payloads,
+        onPointTap = onPointTap,
+        // The position dot is where the walker is; the head of the trace is the best stand-in
+        // for a screen that draws the line without the dot.
+        followTarget = positionHead ?: traceHead,
+        hasNoWalkYet = hasNoWalkYet,
+    )
 }
+
+/** The observations a map may draw: an Outlier Point is not part of the trace (see CONTEXT.md). */
+private fun List<GpsPoint>.drawable(): List<GpsPoint> = filter { !it.isFiltered }
 
 private fun String?.orEmptyCollection(): String = this ?: TraceGeometry.EMPTY_FEATURE_COLLECTION
 
-private fun traceLine(points: List<GpsPoint>): String {
-    val drawn = points.filter { !it.isFiltered }
-    if (drawn.size < 2) return TraceGeometry.EMPTY_FEATURE_COLLECTION
-    return TraceGeometry.lineStringFeature(drawn.map { it.toLatLng() })
-}
+private fun traceLine(drawn: List<GpsPoint>): String =
+    if (drawn.size < 2) {
+        TraceGeometry.EMPTY_FEATURE_COLLECTION
+    } else {
+        TraceGeometry.lineStringFeature(drawn.map { it.toLatLng() })
+    }
 
-private fun currentPosition(points: List<GpsPoint>): String =
-    points.lastOrNull { !it.isFiltered }?.let(::pointFeature) ?: TraceGeometry.EMPTY_FEATURE_COLLECTION
-
-private fun pointDots(points: List<GpsPoint>): String {
-    val features = points.filter { !it.isFiltered }.joinToString(",") { pointFeature(it, """"$POINT_ID_PROPERTY":${it.id}""") }
-    return if (features.isEmpty()) TraceGeometry.EMPTY_FEATURE_COLLECTION else """{"type":"FeatureCollection","features":[$features]}"""
-}
-
-private fun pointFeature(
-    point: GpsPoint,
-    properties: String = "",
-): String =
-    """{"type":"Feature","geometry":{"type":"Point","coordinates":[${point.lng},${point.lat}]},""" +
-        """"properties":{$properties}}"""
+private fun GpsPoint.dotFeature(): String = TraceGeometry.pointFeature(toLatLng(), mapOf(POINT_ID_PROPERTY to id))
