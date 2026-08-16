@@ -342,16 +342,25 @@ internal open class FakeWalkWorkScheduler : WalkWorkScheduler {
  * Programmable [RoutingEngine] — return values are looked up from per-way-id maps so tests can
  * model multi-way streets, missing names, etc. without touching GraphHopper.
  */
-internal class FakeRoutingEngine(
+internal open class FakeRoutingEngine(
     private val streetNamesByWay: Map<Long, String> = emptyMap(),
     private val edgeLengthsByWay: Map<Long, Double> = emptyMap(),
     private val streetTotalLengths: Map<String, Double> = emptyMap(),
+    /** What map matching returns; failure by default, so an unexpected match is loud. */
+    private val matchResult: Result<MatchResult> = Result.failure(UnsupportedOperationException("fake")),
+    private val ready: Boolean = true,
 ) : RoutingEngine {
-    override suspend fun isReady() = true
+    /** How often the session had to initialize the engine before using it. */
+    var initializeCount = 0
+        private set
 
-    override suspend fun initialize() = Unit
+    override suspend fun isReady() = ready
 
-    override suspend fun matchTrace(points: List<GpsPoint>): Result<MatchResult> = Result.failure(UnsupportedOperationException("fake"))
+    override suspend fun initialize() {
+        initializeCount++
+    }
+
+    override suspend fun matchTrace(points: List<GpsPoint>): Result<MatchResult> = matchResult
 
     override suspend fun route(
         from: LatLng,
