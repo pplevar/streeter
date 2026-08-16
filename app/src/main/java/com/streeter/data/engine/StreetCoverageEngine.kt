@@ -1,5 +1,6 @@
 package com.streeter.data.engine
 
+import com.streeter.domain.engine.CoverageEngine
 import com.streeter.domain.engine.RoutingEngine
 import com.streeter.domain.model.*
 import com.streeter.domain.repository.StreetRepository
@@ -26,7 +27,7 @@ class StreetCoverageEngine
         private val streetRepository: StreetRepository,
         private val routingEngine: RoutingEngine,
         private val transactionRunner: TransactionRunner,
-    ) {
+    ) : CoverageEngine {
         private data class WayInfo(
             val wayId: Long,
             val streetName: String,
@@ -48,10 +49,10 @@ class StreetCoverageEngine
          * Performance: all DB writes are batched into a single transaction to avoid per-row
          * fsyncs, which reduces wall-clock time from minutes to seconds on typical walks.
          */
-        suspend fun computeAndPersistCoverage(
+        override suspend fun computeAndPersistCoverage(
             walkId: Long,
             matchedWayIds: List<Long>,
-            onProgress: (suspend (processed: Int, total: Int) -> Unit)? = null,
+            onProgress: (suspend (processed: Int, total: Int) -> Unit)?,
         ) = withContext(Dispatchers.IO) {
             Timber.d("Computing coverage for walk=$walkId, ways=${matchedWayIds.size}")
 

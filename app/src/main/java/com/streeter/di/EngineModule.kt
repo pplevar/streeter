@@ -2,8 +2,10 @@ package com.streeter.di
 
 import androidx.room.withTransaction
 import com.streeter.data.engine.GraphHopperEngine
+import com.streeter.data.engine.StreetCoverageEngine
 import com.streeter.data.engine.TransactionRunner
 import com.streeter.data.local.StreeterDatabase
+import com.streeter.domain.engine.CoverageEngine
 import com.streeter.domain.engine.RoutingEngine
 import dagger.Binds
 import dagger.Module
@@ -17,6 +19,9 @@ import javax.inject.Singleton
 abstract class EngineModule {
     @Binds @Singleton
     abstract fun bindRoutingEngine(impl: GraphHopperEngine): RoutingEngine
+
+    @Binds @Singleton
+    abstract fun bindCoverageEngine(impl: StreetCoverageEngine): CoverageEngine
 
     companion object {
         @Provides @Singleton
