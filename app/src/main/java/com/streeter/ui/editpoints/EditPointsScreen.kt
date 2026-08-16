@@ -34,7 +34,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.R
 import com.streeter.domain.model.GpsPoint
-import com.streeter.ui.map.MAP_STYLE_URL
+import com.streeter.ui.map.MapLayer
 import com.streeter.ui.map.MapLibreMapView
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -195,17 +195,21 @@ fun EditPointsScreen(
                     Modifier
                         .fillMaxSize()
                         .onSizeChanged { mapSizePx = it },
-                styleUrl = MAP_STYLE_URL,
-                gpsPoints = uiState.points,
-                selectedPoint = uiState.selectedPoint,
-                showPointDots = true,
-                onPointTap = { pointId ->
-                    if (pointId == null) {
-                        viewModel.clearSelection()
-                    } else {
-                        selectAndPeek(pointId, SelectionOrigin.MAP)
-                    }
-                },
+                layers =
+                    listOf(
+                        MapLayer.Trace(uiState.points),
+                        MapLayer.TracePoints(
+                            points = uiState.points,
+                            selected = uiState.selectedPoint,
+                            onTap = { pointId ->
+                                if (pointId == null) {
+                                    viewModel.clearSelection()
+                                } else {
+                                    selectAndPeek(pointId, SelectionOrigin.MAP)
+                                }
+                            },
+                        ),
+                    ),
                 onMapReady = { mapRef = it },
             )
 

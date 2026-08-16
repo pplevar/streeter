@@ -32,10 +32,8 @@ import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
 import com.streeter.domain.model.WalkStreetCoverage
 import com.streeter.domain.model.toLatLng
-import com.streeter.ui.map.MAP_STYLE_URL
+import com.streeter.ui.map.MapLayer
 import com.streeter.ui.map.MapLibreMapView
-import com.streeter.ui.map.fitBoundsToGeometryJson
-import org.maplibre.android.maps.MapLibreMap
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -88,7 +86,6 @@ fun WalkDetailScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
-    var mapRef by remember { mutableStateOf<MapLibreMap?>(null) }
 
     LaunchedEffect(uiState.isDeleted) {
         if (uiState.isDeleted) onNavigateBack()
@@ -101,16 +98,12 @@ fun WalkDetailScreen(
         }
     }
 
-    LaunchedEffect(mapRef, uiState.routeGeometryJson, uiState.gpsPoints) {
-        val map = mapRef ?: return@LaunchedEffect
-        // The points arrive free of Outlier Points, so this is the walk's whole trace.
-        val json =
-            uiState.routeGeometryJson
-                ?: uiState.gpsPoints.takeIf { it.size >= 2 }
-                    ?.let { points -> TraceGeometry.lineStringFeature(points.map { it.toLatLng() }) }
-                ?: return@LaunchedEffect
-        fitBoundsToGeometryJson(map, json)
-    }
+    // A calculated walk is framed by its matched route; before that, by its own trace.
+    // The points arrive free of Outlier Points, so this is the walk's whole trace.
+    val geometryForBounds =
+        uiState.routeGeometryJson
+            ?: uiState.gpsPoints.takeIf { it.size >= 2 }
+                ?.let { points -> TraceGeometry.lineStringFeature(points.map { it.toLatLng() }) }
 
     if (uiState.showDeleteConfirm) {
         AlertDialog(
@@ -200,14 +193,16 @@ fun WalkDetailScreen(
                                         .fillMaxWidth()
                                         .height(200.dp)
                                         .clip(RoundedCornerShape(28.dp)),
-                                styleUrl = MAP_STYLE_URL,
-                                gpsPoints = uiState.gpsPoints,
-                                routeGeometryJson = uiState.routeGeometryJson,
+                                layers =
+                                    listOf(
+                                        MapLayer.Trace(uiState.gpsPoints),
+                                        MapLayer.MatchedRoute(uiState.routeGeometryJson),
+                                    ),
+                                fitBoundsTo = geometryForBounds,
                                 onMapReady = { map ->
                                     map.uiSettings.isScrollGesturesEnabled = false
                                     map.uiSettings.isZoomGesturesEnabled = false
                                     map.uiSettings.isTiltGesturesEnabled = false
-                                    mapRef = map
                                 },
                             )
                         }

@@ -24,7 +24,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.R
-import com.streeter.ui.map.MAP_STYLE_URL
+import com.streeter.ui.map.MapLayer
 import com.streeter.ui.map.MapLibreMapView
 import org.maplibre.android.geometry.LatLng
 
@@ -64,11 +64,13 @@ fun RecordingScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         MapLibreMapView(
             modifier = Modifier.fillMaxSize(),
-            styleUrl = MAP_STYLE_URL,
-            gpsPoints = gpsPoints,
-            historyGeometryJson = historyGeometryJson,
+            layers =
+                buildList {
+                    add(MapLayer.TraceHistory(historyGeometryJson))
+                    add(MapLayer.Trace(gpsPoints))
+                    if (isWalkStarted) add(MapLayer.CurrentPosition(gpsPoints))
+                },
             followLocation = isWalkStarted && !isPaused,
-            showCurrentPosition = isWalkStarted,
             initialLatLng = initialLatLng,
         )
 

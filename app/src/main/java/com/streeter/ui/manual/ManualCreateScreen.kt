@@ -28,7 +28,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.R
-import com.streeter.ui.map.MAP_STYLE_URL
+import com.streeter.ui.map.MapLayer
 import com.streeter.ui.map.MapLibreMapView
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,15 +104,13 @@ fun ManualCreateScreen(
         // Full-screen map
         MapLibreMapView(
             modifier = Modifier.fillMaxSize(),
-            styleUrl = MAP_STYLE_URL,
-            gpsPoints = emptyList(),
+            layers = listOf(MapLayer.MatchedRoute(uiState.accumulatedGeometryJson)),
             initialLatLng = initialLatLng,
             onCameraMove = { mapLatLng ->
                 viewModel.onCameraMove(
                     com.streeter.domain.model.LatLng(mapLatLng.latitude, mapLatLng.longitude),
                 )
             },
-            routeGeometryJson = uiState.accumulatedGeometryJson,
         )
 
         // Gradient header: solid surface fading to transparent over the app bar area
