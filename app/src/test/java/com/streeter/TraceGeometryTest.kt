@@ -235,8 +235,11 @@ class TraceGeometryTest {
 
     // --- Measuring ---
 
+    // The outlier filter's distance is now this one — the check that the two agree has become the
+    // check that the filter's helper still routes here, which is what keeps a recorded trace and a
+    // drawn route measured the same way.
     @Test
-    fun `distance agrees with the outlier filter's spherical measure`() {
+    fun `the outlier filter measures distance with the shared module`() {
         val a = LatLng(52.3702, 4.8952)
         val b = LatLng(52.3760, 4.9010)
 

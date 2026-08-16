@@ -20,7 +20,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.streeter.domain.model.StreetWalkEntry
 import com.streeter.ui.map.MAP_STYLE_URL
 import com.streeter.ui.map.MapLibreMapView
-import com.streeter.ui.map.fitBoundsToJson
+import com.streeter.ui.map.fitBoundsToGeometryJson
 import org.maplibre.android.maps.MapLibreMap
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,7 +42,7 @@ fun StreetDetailScreen(
     LaunchedEffect(mapRef, geometryForBounds) {
         val map = mapRef ?: return@LaunchedEffect
         val json = geometryForBounds ?: return@LaunchedEffect
-        fitBoundsToJson(map, json)
+        fitBoundsToGeometryJson(map, json)
     }
 
     Scaffold(

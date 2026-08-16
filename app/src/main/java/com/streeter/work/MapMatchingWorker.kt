@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.streeter.data.engine.StreetCoverageEngine
 import com.streeter.domain.engine.RoutingEngine
+import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.JobStatus
 import com.streeter.domain.model.RouteSegment
 import com.streeter.domain.model.WalkSource
@@ -148,7 +149,10 @@ class MapMatchingWorker
                                 return@withContext Result.success()
                             }
                             setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Route segments loaded…"))
-                            matchedDistanceM = segments.sumOf { geometryDistanceM(it.geometryJson) }
+                            // Unreadable geometry raises rather than measuring zero: a manual walk
+                            // reported as zero-length looks like a walk that happened, and the job
+                            // then records why instead of the walk quietly losing its distance.
+                            matchedDistanceM = segments.sumOf { TraceGeometry.lengthMeters(it.geometryJson) }
                             segments.flatMap { parseWayIds(it.matchedWayIds) }
                         }
 
@@ -200,31 +204,6 @@ class MapMatchingWorker
                     if (retries >= 3) Result.failure() else Result.retry()
                 }
             }
-
-        private fun geometryDistanceM(geometryJson: String): Double {
-            return try {
-                val obj = org.json.JSONObject(geometryJson)
-                val arr = obj.getJSONObject("geometry").getJSONArray("coordinates")
-                if (arr.length() < 2) return 0.0
-                val results = FloatArray(1)
-                var total = 0.0
-                for (i in 0 until arr.length() - 1) {
-                    val a = arr.getJSONArray(i)
-                    val b = arr.getJSONArray(i + 1)
-                    android.location.Location.distanceBetween(
-                        a.getDouble(1),
-                        a.getDouble(0),
-                        b.getDouble(1),
-                        b.getDouble(0),
-                        results,
-                    )
-                    total += results[0]
-                }
-                total
-            } catch (_: Exception) {
-                0.0
-            }
-        }
 
         private fun parseWayIds(json: String): List<Long> {
             return try {

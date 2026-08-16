@@ -10,10 +10,12 @@ import com.graphhopper.matching.MapMatching
 import com.graphhopper.matching.Observation
 import com.graphhopper.util.PMap
 import com.streeter.domain.engine.RoutingEngine
+import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.MatchResult
 import com.streeter.domain.model.RouteResult
+import com.streeter.domain.model.toLatLng
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -288,7 +290,7 @@ class GraphHopperEngine
 
             val allCoords = mutableListOf<LatLng>()
             for ((i, result) in results.withIndex()) {
-                val coords = parseCoordinates(result.geometryJson)
+                val coords = TraceGeometry.parseOrEmpty(result.geometryJson)
                 if (i == 0) {
                     allCoords.addAll(coords)
                 } else {
@@ -296,28 +298,13 @@ class GraphHopperEngine
                 }
             }
 
-            val coordStr = allCoords.joinToString(",") { "[${it.lng},${it.lat}]" }
-            val geometry = """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coordStr]},"properties":{}}"""
             return Result.success(
                 RouteResult(
-                    geometryJson = geometry,
+                    geometryJson = TraceGeometry.lineStringFeature(allCoords),
                     distanceM = results.sumOf { it.distanceM },
                     wayIds = results.flatMap { it.wayIds },
                 ),
             )
-        }
-
-        private fun parseCoordinates(geometryJson: String): List<LatLng> {
-            return try {
-                val obj = org.json.JSONObject(geometryJson)
-                val arr = obj.getJSONObject("geometry").getJSONArray("coordinates")
-                (0 until arr.length()).map { i ->
-                    val pair = arr.getJSONArray(i)
-                    LatLng(lat = pair.getDouble(1), lng = pair.getDouble(0))
-                }
-            } catch (_: Exception) {
-                emptyList()
-            }
         }
 
         override fun getStreetName(edgeId: Long): String? {
@@ -470,25 +457,20 @@ class GraphHopperEngine
                 val edge = gh.baseGraph.getEdgeIteratorState(edgeId.toInt(), Integer.MIN_VALUE)
                 val points = edge.fetchWayGeometry(com.graphhopper.util.FetchMode.ALL)
                 if (points.size() < 2) return null
-                val coords =
-                    (0 until points.size()).joinToString(",") { i ->
-                        "[${points.getLon(i)},${points.getLat(i)}]"
-                    }
-                """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
+                TraceGeometry.lineStringFeature(points.toLatLngs())
             } catch (_: Exception) {
                 null
             }
         }
 
-        private fun buildMatchedLineString(result: com.graphhopper.matching.MatchResult): String {
-            val coords = result.mergedPath.calcPoints().joinToString(",") { "[${it.lon},${it.lat}]" }
-            return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
-        }
+        private fun buildMatchedLineString(result: com.graphhopper.matching.MatchResult): String =
+            buildRouteLineString(result.mergedPath.calcPoints())
 
-        private fun buildRouteLineString(points: com.graphhopper.util.PointList): String {
-            val coords = points.joinToString(",") { "[${it.lon},${it.lat}]" }
-            return """{"type":"Feature","geometry":{"type":"LineString","coordinates":[$coords]},"properties":{}}"""
-        }
+        private fun buildRouteLineString(points: com.graphhopper.util.PointList): String =
+            TraceGeometry.lineStringFeature(points.toLatLngs())
+
+        /** GraphHopper's own point list as this app's coordinates, so the shared module can write it. */
+        private fun com.graphhopper.util.PointList.toLatLngs(): List<LatLng> = map { LatLng(lat = it.lat, lng = it.lon) }
 
         /**
          * Removes consecutive GPS points that are closer than [MIN_DEDUP_DISTANCE_METERS] to the
@@ -500,30 +482,13 @@ class GraphHopperEngine
             val result = mutableListOf(points.first())
             for (pt in points.drop(1)) {
                 val prev = result.last()
-                if (haversineMeters(prev.lat, prev.lng, pt.lat, pt.lng) >= MIN_DEDUP_DISTANCE_METERS) {
+                if (TraceGeometry.distanceMeters(prev.toLatLng(), pt.toLatLng()) >= MIN_DEDUP_DISTANCE_METERS) {
                     result += pt
                 }
             }
             // Always include the last point so the trace end is preserved.
             if (result.last() !== points.last()) result += points.last()
             return result
-        }
-
-        private fun haversineMeters(
-            lat1: Double,
-            lon1: Double,
-            lat2: Double,
-            lon2: Double,
-        ): Double {
-            val r = 6_371_000.0
-            val phi1 = Math.toRadians(lat1)
-            val phi2 = Math.toRadians(lat2)
-            val dPhi = Math.toRadians(lat2 - lat1)
-            val dLambda = Math.toRadians(lon2 - lon1)
-            val a =
-                Math.sin(dPhi / 2).let { it * it } +
-                    Math.cos(phi1) * Math.cos(phi2) * Math.sin(dLambda / 2).let { it * it }
-            return r * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
         }
 
         private fun assetExists(): Boolean =
