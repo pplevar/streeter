@@ -20,11 +20,10 @@ class SyncWorker
         @Assisted params: WorkerParameters,
         private val remoteSyncRepository: RemoteSyncRepository,
         outcomes: SyncOutcomeHandler,
-    ) : SyncOperationWorker(context, params, outcomes) {
-        override fun operation(): SyncOperation? = inputWalkId()?.let(SyncOperation::Push)
+    ) : SyncOperationWorker<SyncOperation.Push>(context, params, outcomes) {
+        override fun operation(): SyncOperation.Push? = inputWalkId()?.let(SyncOperation::Push)
 
-        override suspend fun perform(operation: SyncOperation): kotlin.Result<Unit> =
-            remoteSyncRepository.syncWalk((operation as SyncOperation.Push).walkId)
+        override suspend fun perform(operation: SyncOperation.Push): kotlin.Result<Unit> = remoteSyncRepository.syncWalk(operation.walkId)
 
         companion object {
             fun buildRequest(walkId: Long): OneTimeWorkRequest =

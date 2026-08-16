@@ -1,8 +1,8 @@
 package com.streeter
 
-import com.streeter.data.remote.auth.SyncAuthStatus
 import com.streeter.domain.model.SyncStatus
 import com.streeter.domain.sync.SyncAuthException
+import com.streeter.domain.sync.SyncAuthStatus
 import com.streeter.domain.sync.SyncDisposition
 import com.streeter.domain.sync.SyncOperation
 import com.streeter.domain.sync.SyncOutcomeHandler
@@ -86,7 +86,7 @@ class SyncOutcomeHandlerTest {
     fun `a transient failure gives up once the shared attempt budget is spent`() =
         runBlocking {
             val disposition =
-                handler.onFailure(SyncOperation.Pull, IOException("boom"), WorkRetryPolicy.MAX_ATTEMPTS)
+                handler.onFailure(SyncOperation.Pull, IOException("boom"), WorkRetryPolicy.MAX_RETRIES)
 
             assertEquals(SyncDisposition.FAILURE, disposition)
         }

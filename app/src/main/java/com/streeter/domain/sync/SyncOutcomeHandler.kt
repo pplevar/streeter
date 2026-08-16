@@ -1,6 +1,5 @@
 package com.streeter.domain.sync
 
-import com.streeter.data.remote.auth.SyncAuthStatus
 import com.streeter.domain.work.WalkSyncFinalizer
 import com.streeter.domain.work.WalkWorkScheduler
 import com.streeter.domain.work.WorkRetryPolicy

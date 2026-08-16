@@ -2,8 +2,6 @@ package com.streeter.work
 
 import android.content.Context
 import androidx.hilt.work.HiltWorker
-import androidx.work.Constraints
-import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequest
 import androidx.work.PeriodicWorkRequest
 import androidx.work.PeriodicWorkRequestBuilder
@@ -24,10 +22,10 @@ class PullSyncWorker
         @Assisted params: WorkerParameters,
         private val remoteSyncRepository: RemoteSyncRepository,
         outcomes: SyncOutcomeHandler,
-    ) : SyncOperationWorker(context, params, outcomes) {
-        override fun operation(): SyncOperation = SyncOperation.Pull
+    ) : SyncOperationWorker<SyncOperation.Pull>(context, params, outcomes) {
+        override fun operation(): SyncOperation.Pull = SyncOperation.Pull
 
-        override suspend fun perform(operation: SyncOperation): kotlin.Result<Unit> = remoteSyncRepository.pullWalks()
+        override suspend fun perform(operation: SyncOperation.Pull): kotlin.Result<Unit> = remoteSyncRepository.pullWalks()
 
         companion object {
             const val UNIQUE_WORK_NAME = "pull_sync"
@@ -37,11 +35,7 @@ class PullSyncWorker
 
             fun buildPeriodicRequest(): PeriodicWorkRequest =
                 PeriodicWorkRequestBuilder<PullSyncWorker>(24, TimeUnit.HOURS)
-                    .setConstraints(
-                        Constraints.Builder()
-                            .setRequiredNetworkType(NetworkType.CONNECTED)
-                            .build(),
-                    )
+                    .setConstraints(SyncOperationWorker.connectedConstraints())
                     .build()
         }
     }

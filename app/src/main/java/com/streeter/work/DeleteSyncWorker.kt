@@ -25,11 +25,13 @@ class DeleteSyncWorker
         @Assisted params: WorkerParameters,
         private val remoteSyncRepository: RemoteSyncRepository,
         outcomes: SyncOutcomeHandler,
-    ) : SyncOperationWorker(context, params, outcomes) {
-        override fun operation(): SyncOperation? = inputWalkId()?.let(SyncOperation::Delete)
+    ) : SyncOperationWorker<SyncOperation.Delete>(context, params, outcomes) {
+        override fun operation(): SyncOperation.Delete? = inputWalkId()?.let(SyncOperation::Delete)
 
-        override suspend fun perform(operation: SyncOperation): kotlin.Result<Unit> =
-            remoteSyncRepository.deleteWalk((operation as SyncOperation.Delete).walkId)
+        override suspend fun perform(operation: SyncOperation.Delete): kotlin.Result<Unit> =
+            remoteSyncRepository.deleteWalk(
+                operation.walkId,
+            )
 
         companion object {
             fun buildRequest(walkId: Long): OneTimeWorkRequest =

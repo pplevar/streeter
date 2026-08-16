@@ -24,16 +24,16 @@ import java.util.concurrent.TimeUnit
  * Subclasses supply only their operation and the call that performs it; the fold, the logging and
  * the mapping onto WorkManager's `Result` live here once.
  */
-abstract class SyncOperationWorker(
+abstract class SyncOperationWorker<O : SyncOperation>(
     context: Context,
     params: WorkerParameters,
     private val outcomes: SyncOutcomeHandler,
 ) : CoroutineWorker(context, params) {
     /** The unit of sync this run dispatches, or `null` if the input data does not name one. */
-    protected abstract fun operation(): SyncOperation?
+    protected abstract fun operation(): O?
 
     /** Performs [operation] against the server. */
-    protected abstract suspend fun perform(operation: SyncOperation): kotlin.Result<Unit>
+    protected abstract suspend fun perform(operation: O): kotlin.Result<Unit>
 
     final override suspend fun doWork(): ListenableWorker.Result {
         val operation = operation() ?: return ListenableWorker.Result.failure()
@@ -60,6 +60,12 @@ abstract class SyncOperationWorker(
     companion object {
         const val KEY_WALK_ID = "walk_id"
 
+        /** Sync always needs the network — a pull or push has nothing to do offline. */
+        fun connectedConstraints(): Constraints =
+            Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+
         /**
          * The one-time request shape every sync worker uses: needs connectivity, retries on the
          * shared backoff, optionally carries a walk id and a unique-work tag.
@@ -73,11 +79,7 @@ abstract class SyncOperationWorker(
                     if (walkId != null) setInputData(workDataOf(KEY_WALK_ID to walkId))
                     if (tag != null) addTag(tag)
                 }
-                .setConstraints(
-                    Constraints.Builder()
-                        .setRequiredNetworkType(NetworkType.CONNECTED)
-                        .build(),
-                )
+                .setConstraints(connectedConstraints())
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WorkRetryPolicy.BACKOFF_SECONDS, TimeUnit.SECONDS)
                 .build()
     }

@@ -9,12 +9,15 @@ package com.streeter.domain.work
  * WorkManager wants.
  */
 object WorkRetryPolicy {
-    /** Attempts a job gets before it gives up. WorkManager counts the first run as attempt 0. */
-    const val MAX_ATTEMPTS = 3
+    /**
+     * Retries a job gets after its first run — so four runs in total. WorkManager counts the first
+     * run as attempt 0, which is what [hasAttemptsLeft] compares against.
+     */
+    const val MAX_RETRIES = 3
 
     /** Delay before the first retry; WorkManager doubles it on each subsequent attempt. */
     const val BACKOFF_SECONDS = 30L
 
-    /** Whether a job that has just finished attempt [runAttemptCount] still has budget left. */
-    fun hasAttemptsLeft(runAttemptCount: Int): Boolean = runAttemptCount < MAX_ATTEMPTS
+    /** Whether a job that has just failed attempt [runAttemptCount] still has budget left. */
+    fun hasAttemptsLeft(runAttemptCount: Int): Boolean = runAttemptCount < MAX_RETRIES
 }
