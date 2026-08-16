@@ -28,8 +28,8 @@ object GpsOutlierFilter {
      * The filter's distance, in metres — now [TraceGeometry.distanceMeters] itself.
      *
      * This was the one correct copy of the haversine, so the shared module was written to match
-     * it and migrating changes no result here. Kept as a name over plain latitude/longitude for
-     * the callers that hold no [com.streeter.domain.model.LatLng].
+     * it and migrating changed no result here. Kept only so the tests that pin those metres go
+     * on pinning them through the filter; nothing in the app calls it.
      */
     fun haversineMeters(
         lat1: Double,

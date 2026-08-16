@@ -193,7 +193,7 @@ class GraphHopperEngine
                     val wayIds =
                         matchResult.mergedPath.calcEdges()
                             .map { it.edge.toLong() } // edge IDs as proxy for way IDs
-                    val geometry = buildMatchedLineString(matchResult)
+                    val geometry = buildRouteLineString(matchResult.mergedPath.calcPoints())
                     Result.success(
                         MatchResult(
                             snappedPoints = points.map { LatLng(it.lat, it.lng) },
@@ -462,9 +462,6 @@ class GraphHopperEngine
                 null
             }
         }
-
-        private fun buildMatchedLineString(result: com.graphhopper.matching.MatchResult): String =
-            buildRouteLineString(result.mergedPath.calcPoints())
 
         private fun buildRouteLineString(points: com.graphhopper.util.PointList): String =
             TraceGeometry.lineStringFeature(points.toLatLngs())

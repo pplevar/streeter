@@ -11,7 +11,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import com.streeter.domain.geometry.MalformedGeometryException
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
 import com.streeter.domain.model.toLatLng
@@ -424,20 +423,21 @@ fun fitBoundsToGeometryJson(
     map: MapLibreMap,
     geojson: String,
 ) {
-    val bounds =
-        try {
-            TraceGeometry.bounds(geojson)
-        } catch (e: MalformedGeometryException) {
-            Timber.e(e, "Failed to fit bounds to geometry JSON")
-            return
-        } ?: return
-    map.animateCamera(
-        org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(
-            LatLngBounds.Builder()
-                .include(LatLng(bounds.south, bounds.west))
-                .include(LatLng(bounds.north, bounds.east))
-                .build(),
-            BOUNDS_PADDING_PX,
-        ),
-    )
+    // The whole move is guarded, not just the read: a degenerate box — one point, or a payload
+    // that is all the same coordinate — is a camera the renderer may refuse, and a screen that
+    // cannot frame its route should still draw it.
+    try {
+        val bounds = TraceGeometry.bounds(geojson) ?: return
+        map.animateCamera(
+            org.maplibre.android.camera.CameraUpdateFactory.newLatLngBounds(
+                LatLngBounds.Builder()
+                    .include(LatLng(bounds.south, bounds.west))
+                    .include(LatLng(bounds.north, bounds.east))
+                    .build(),
+                BOUNDS_PADDING_PX,
+            ),
+        )
+    } catch (e: Exception) {
+        Timber.e(e, "Failed to fit bounds to geometry JSON")
+    }
 }

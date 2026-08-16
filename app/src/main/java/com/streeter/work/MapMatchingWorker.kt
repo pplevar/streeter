@@ -5,6 +5,7 @@ import androidx.hilt.work.HiltWorker
 import androidx.work.*
 import com.streeter.data.engine.StreetCoverageEngine
 import com.streeter.domain.engine.RoutingEngine
+import com.streeter.domain.geometry.MalformedGeometryException
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.JobStatus
 import com.streeter.domain.model.RouteSegment
@@ -149,9 +150,9 @@ class MapMatchingWorker
                                 return@withContext Result.success()
                             }
                             setProgress(workDataOf(KEY_PROGRESS to 50, KEY_STEP to "Route segments loaded…"))
-                            // Unreadable geometry raises rather than measuring zero: a manual walk
-                            // reported as zero-length looks like a walk that happened, and the job
-                            // then records why instead of the walk quietly losing its distance.
+                            // Unreadable geometry raises rather than measuring zero, so a manual
+                            // walk never reports a length it did not have. Caught below: the walk
+                            // still finishes, but without a distance and with the reason recorded.
                             matchedDistanceM = segments.sumOf { TraceGeometry.lengthMeters(it.geometryJson) }
                             segments.flatMap { parseWayIds(it.matchedWayIds) }
                         }
@@ -173,6 +174,18 @@ class MapMatchingWorker
                     }
 
                     Timber.i("MapMatchingWorker completed for walk=$walkId")
+                    Result.success()
+                } catch (e: MalformedGeometryException) {
+                    // Geometry that cannot be read will not read on the next attempt either, so
+                    // this is a dead end rather than a retry: finish the walk without a distance
+                    // and leave the reason on the job, instead of stranding it in PENDING_MATCH.
+                    Timber.e(e, "Unreadable segment geometry for walk=$walkId, completing without a distance")
+                    finalizer.complete(walkId)
+                    pendingMatchJobRepository.getJobForWalk(walkId)?.let {
+                        pendingMatchJobRepository.updateJob(
+                            it.copy(status = JobStatus.DONE, lastError = "Unreadable geometry: ${e.message}"),
+                        )
+                    }
                     Result.success()
                 } catch (e: java.io.FileNotFoundException) {
                     Timber.w("MapMatchingWorker: engine assets missing for walk=$walkId, completing without coverage")
