@@ -31,8 +31,14 @@ enum class MapSlot {
     /** An edit the user has not committed yet, over the route it would replace. */
     ROUTE_PREVIEW,
 
+    /** An uncommitted move of one trace point, over the trace it would replace. */
+    TRACE_PREVIEW,
+
     /** One tappable dot per trace point. */
     TRACE_POINTS,
+
+    /** Where a point being moved started out, while its move is uncommitted. */
+    EDIT_ORIGIN,
 
     /** The dot the user has selected, and its halo. */
     SELECTED_POINT,
@@ -86,6 +92,26 @@ sealed interface MapLayer {
     /** The route editor's uncommitted edit, over the route it would replace. */
     data class RoutePreview(
         val geoJson: String?,
+    ) : MapLayer
+
+    /**
+     * The uncommitted shape of a trace whose point is being moved: the segments joining that
+     * point, at the coordinate it would take, to the neighbours it still has.
+     *
+     * Distinct from [RoutePreview], which previews an edit to a *route*. Both say "not committed
+     * yet" and both sit above what they would replace, but they are edits to different things
+     * and each screen must be able to restyle its own.
+     */
+    data class TracePreview(
+        val line: List<LatLng>,
+    ) : MapLayer
+
+    /**
+     * A ghost at [origin] — where a point being moved was before the move began, so the user can
+     * see how far they have taken it. Null while nothing is being moved.
+     */
+    data class EditOrigin(
+        val origin: LatLng?,
     ) : MapLayer
 
     /**
@@ -162,6 +188,15 @@ fun mapPlanOf(layers: List<MapLayer>): MapPlan {
             }
             is MapLayer.HighlightedWalk -> payloads[MapSlot.HIGHLIGHTED_WALK] = layer.geoJson.orEmptyCollection()
             is MapLayer.RoutePreview -> payloads[MapSlot.ROUTE_PREVIEW] = layer.geoJson.orEmptyCollection()
+            is MapLayer.TracePreview ->
+                payloads[MapSlot.TRACE_PREVIEW] =
+                    if (layer.line.size < 2) {
+                        TraceGeometry.EMPTY_FEATURE_COLLECTION
+                    } else {
+                        TraceGeometry.lineStringFeature(layer.line)
+                    }
+            is MapLayer.EditOrigin ->
+                payloads[MapSlot.EDIT_ORIGIN] = layer.origin?.let { TraceGeometry.pointFeature(it) }.orEmptyCollection()
             is MapLayer.TracePoints -> {
                 val drawn = layer.points.drawable()
                 payloads[MapSlot.TRACE_POINTS] = TraceGeometry.collect(drawn.map { it.dotFeature() })

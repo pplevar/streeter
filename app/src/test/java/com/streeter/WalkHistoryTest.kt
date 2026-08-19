@@ -187,6 +187,13 @@ class WalkHistoryTest {
             points: List<GpsPoint>,
         ) = Unit
 
+        override suspend fun movePoint(
+            walkId: Long,
+            pointId: Long,
+            lat: Double,
+            lng: Double,
+        ) = Unit
+
         override suspend fun deletePoint(
             walkId: Long,
             pointId: Long,

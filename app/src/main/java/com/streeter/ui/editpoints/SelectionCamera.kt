@@ -1,5 +1,9 @@
 package com.streeter.ui.editpoints
 
+import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.LatLng
+import com.streeter.domain.model.toLatLng
+
 /**
  * The map edges covered by screen chrome — the bottom sheet, the control pill, the top bar —
  * in pixels. What is left over is the *uncovered region*: the part of the map the user can
@@ -58,3 +62,30 @@ private fun shiftInto(
         value > max -> max - value
         else -> 0f
     }
+
+/**
+ * The line the live preview draws while a point is being moved: the segments joining the edited
+ * point, at its uncommitted coordinate, to the neighbours it still has in the trace.
+ *
+ * Returned as one polyline rather than two segments — the two share the moving point, so drawn
+ * together they are the corrected shape of the walk. At the ends of the trace only one segment
+ * exists, and the result is that segment alone; a point with no neighbours at all (or an id the
+ * trace does not hold) previews nothing.
+ *
+ * Pure and Android-free, beside [panToReveal], so the geometry that decides whether the preview
+ * is right at the first point, the last point and on a two-point walk is settled under a JVM
+ * test rather than on a device.
+ */
+fun editPreviewLine(
+    points: List<GpsPoint>,
+    editingPointId: Long,
+    pending: LatLng,
+): List<LatLng> {
+    val index = points.indexOfFirst { it.id == editingPointId }
+    if (index < 0) return emptyList()
+    val line = mutableListOf<LatLng>()
+    points.getOrNull(index - 1)?.let { line += it.toLatLng() }
+    line += pending
+    points.getOrNull(index + 1)?.let { line += it.toLatLng() }
+    return if (line.size < 2) emptyList() else line
+}

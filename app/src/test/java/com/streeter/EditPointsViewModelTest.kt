@@ -2,6 +2,7 @@ package com.streeter
 
 import androidx.lifecycle.SavedStateHandle
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.LatLng
 import com.streeter.domain.model.Walk
 import com.streeter.domain.model.WalkSource
 import com.streeter.domain.model.WalkStatus
@@ -96,6 +97,17 @@ class EditPointsViewModelTest {
             walkId: Long,
             points: List<GpsPoint>,
         ) = Unit
+
+        override suspend fun movePoint(
+            walkId: Long,
+            pointId: Long,
+            lat: Double,
+            lng: Double,
+        ) {
+            state.update { current ->
+                current.map { if (it.walkId == walkId && it.id == pointId) it.copy(lat = lat, lng = lng) else it }
+            }
+        }
 
         override suspend fun deletePoint(
             walkId: Long,
@@ -624,5 +636,246 @@ class EditPointsViewModelTest {
             vm.dismissMinPointsMessage()
 
             assertFalse(vm.uiState.value.minPointsMessage)
+        }
+
+    // --- Moving a point's coordinate (issue #76) ---------------------------------------------
+
+    @Test
+    fun `entering edit mode marks the selected point as the one being moved`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+
+            vm.beginEdit()
+
+            assertEquals(2L, vm.uiState.value.editingPointId)
+            assertTrue(vm.uiState.value.isEditing)
+        }
+
+    @Test
+    fun `entering edit mode changes nothing but the edit state`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+
+            vm.beginEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(listOf(point(1), point(2), point(3)), vm.uiState.value.points)
+            assertEquals(2L, vm.uiState.value.selectedPointId)
+        }
+
+    @Test
+    fun `entering edit mode seeds the pending coordinate with where the point already is`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+
+            vm.beginEdit()
+
+            assertEquals(LatLng(2.0, 2.0), vm.uiState.value.pendingLatLng)
+        }
+
+    @Test
+    fun `edit mode cannot be entered with nothing selected`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.beginEdit()
+
+            assertNull(vm.uiState.value.editingPointId)
+        }
+
+    @Test
+    fun `moving the crosshair updates the pending coordinate without touching the stored point`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(LatLng(51.5, -0.12), vm.uiState.value.pendingLatLng)
+            assertEquals(listOf(point(1), point(2), point(3)), vm.uiState.value.points)
+        }
+
+    @Test
+    fun `the crosshair is ignored when nothing is being moved`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+
+            assertNull(vm.uiState.value.pendingLatLng)
+        }
+
+    @Test
+    fun `the preview follows the crosshair between the moved point's neighbours`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+
+            assertEquals(
+                listOf(LatLng(1.0, 1.0), LatLng(51.5, -0.12), LatLng(3.0, 3.0)),
+                vm.uiState.value.previewLine,
+            )
+        }
+
+    @Test
+    fun `nothing is previewed while nothing is being moved`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+
+            assertEquals(emptyList<LatLng>(), vm.uiState.value.previewLine)
+        }
+
+    @Test
+    fun `Done writes the new coordinate and leaves edit mode`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+
+            vm.commitEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val moved = vm.uiState.value.points.single { it.id == 2L }
+            assertEquals(51.5, moved.lat, 0.0)
+            assertEquals(-0.12, moved.lng, 0.0)
+            assertNull(vm.uiState.value.editingPointId)
+            assertNull(vm.uiState.value.pendingLatLng)
+        }
+
+    @Test
+    fun `a moved point keeps its identity, its moment and its place in the trace`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+
+            vm.commitEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val points = vm.uiState.value.points
+            assertEquals(listOf(1L, 2L, 3L), points.map { it.id })
+            assertEquals(point(2).timestamp, points[1].timestamp)
+            assertEquals(point(2).accuracyM, points[1].accuracyM, 0f)
+        }
+
+    @Test
+    fun `Done keeps the moved point selected`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+
+            vm.commitEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(2L, vm.uiState.value.selectedPointId)
+        }
+
+    @Test
+    fun `Cancel leaves edit mode and writes nothing`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+
+            vm.cancelEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(listOf(point(1), point(2), point(3)), vm.uiState.value.points)
+            assertNull(vm.uiState.value.editingPointId)
+            assertNull(vm.uiState.value.pendingLatLng)
+        }
+
+    @Test
+    fun `leaving the editor after only moving points still recalculates the walk`() =
+        runTest {
+            val walkRepository = FakeWalkRepository(listOf(walk(status = WalkStatus.COMPLETED)))
+            val scheduler = FakeWalkWorkScheduler()
+            val vm = viewModel(listOf(point(1), point(2), point(3)), walkRepository, scheduler)
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+            vm.commitEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.onExit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(WalkStatus.PENDING_MATCH, walkRepository.getWalkById(1L)?.status)
+            assertEquals(listOf(1L), scheduler.calculationEnqueued)
+        }
+
+    @Test
+    fun `leaving the editor after a cancelled edit recalculates nothing`() =
+        runTest {
+            val walkRepository = FakeWalkRepository(listOf(walk(status = WalkStatus.COMPLETED)))
+            val scheduler = FakeWalkWorkScheduler()
+            val vm = viewModel(listOf(point(1), point(2), point(3)), walkRepository, scheduler)
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+            vm.cancelEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.onExit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(WalkStatus.COMPLETED, walkRepository.getWalkById(1L)?.status)
+            assertTrue(scheduler.calculationEnqueued.isEmpty())
+        }
+
+    @Test
+    fun `a point can be moved at the minimum-points floor, where it cannot be deleted`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2)))
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            assertFalse(vm.uiState.value.canDeleteMore)
+
+            vm.beginEdit()
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+            vm.commitEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(51.5, vm.uiState.value.points.single { it.id == 2L }.lat, 0.0)
+        }
+
+    @Test
+    fun `an Outlier Point is not there to be moved`() =
+        runTest {
+            val vm = viewModel(listOf(point(1), point(2, isFiltered = true), point(3)))
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+
+            assertNull(vm.uiState.value.editingPointId)
         }
 }

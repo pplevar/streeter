@@ -2,6 +2,7 @@ package com.streeter
 
 import com.streeter.domain.geometry.TraceGeometry
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.LatLng
 import com.streeter.ui.map.MapLayer
 import com.streeter.ui.map.MapSlot
 import com.streeter.ui.map.mapPlanOf
@@ -64,6 +65,44 @@ class MapPlanTest {
         val order = MapSlot.entries
         assertTrue(order.indexOf(MapSlot.ROUTE_PREVIEW) > order.indexOf(MapSlot.ROUTE))
         assertTrue(order.indexOf(MapSlot.HIGHLIGHTED_WALK) > order.indexOf(MapSlot.ROUTE))
+    }
+
+    @Test
+    fun `an uncommitted point move is drawn over the trace it would replace, under the ghost`() {
+        val order = MapSlot.entries
+        assertTrue(order.indexOf(MapSlot.TRACE_PREVIEW) > order.indexOf(MapSlot.TRACE))
+        assertTrue(order.indexOf(MapSlot.EDIT_ORIGIN) > order.indexOf(MapSlot.TRACE_PREVIEW))
+    }
+
+    // --- A point being moved ----------------------------------------------------------------
+
+    @Test
+    fun `the move preview is the line the editor handed over`() {
+        val plan = mapPlanOf(listOf(MapLayer.TracePreview(listOf(LatLng(1.0, 2.0), LatLng(3.0, 4.0)))))
+
+        assertEquals(
+            """{"type":"Feature","geometry":{"type":"LineString","coordinates":[[2.0,1.0],[4.0,3.0]]},"properties":{}}""",
+            plan.payloadFor(MapSlot.TRACE_PREVIEW),
+        )
+    }
+
+    @Test
+    fun `a preview with nothing to join draws nothing`() {
+        // What a lone point's preview amounts to: one coordinate is not a segment.
+        assertEquals(empty, mapPlanOf(listOf(MapLayer.TracePreview(emptyList()))).payloadFor(MapSlot.TRACE_PREVIEW))
+        assertEquals(empty, mapPlanOf(listOf(MapLayer.TracePreview(listOf(LatLng(1.0, 2.0))))).payloadFor(MapSlot.TRACE_PREVIEW))
+    }
+
+    @Test
+    fun `the ghost marks where a moved point started, and nothing when nothing is moving`() {
+        val moving = mapPlanOf(listOf(MapLayer.EditOrigin(LatLng(1.0, 2.0))))
+        val still = mapPlanOf(listOf(MapLayer.EditOrigin(null)))
+
+        assertEquals(
+            """{"type":"Feature","geometry":{"type":"Point","coordinates":[2.0,1.0]},"properties":{}}""",
+            moving.payloadFor(MapSlot.EDIT_ORIGIN),
+        )
+        assertEquals(empty, still.payloadFor(MapSlot.EDIT_ORIGIN))
     }
 
     // --- Undeclared slots -----------------------------------------------------------------

@@ -254,6 +254,13 @@ internal class RecordingGpsPointRepository : GpsPointRepository {
 
     override suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPoint> = emptyList()
 
+    override suspend fun movePoint(
+        walkId: Long,
+        pointId: Long,
+        lat: Double,
+        lng: Double,
+    ) = Unit
+
     override suspend fun deletePoint(
         walkId: Long,
         pointId: Long,
@@ -427,6 +434,13 @@ internal class FakeGpsPointRepository : GpsPointRepository {
         inserted.removeAll { it.walkId == walkId }
         inserted += points
     }
+
+    override suspend fun movePoint(
+        walkId: Long,
+        pointId: Long,
+        lat: Double,
+        lng: Double,
+    ) = Unit
 
     override suspend fun deletePoint(
         walkId: Long,
