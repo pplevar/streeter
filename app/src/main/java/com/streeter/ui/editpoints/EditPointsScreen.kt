@@ -80,20 +80,28 @@ private fun revealIfHidden(
 }
 
 /**
- * Moves the camera so [point] sits under the crosshair, at the centre of the uncovered map
+ * Moves the camera so [target] sits under the crosshair, at the centre of the uncovered map
  * area. The one camera move the editor makes on its own initiative — and it does not: the user
  * asked for it by pressing edit (ADR-0007 governs *selection*, and this is not one). Zoom is
  * still left exactly where they set it.
+ *
+ * [target] is the *pending* coordinate rather than the point's stored one, so re-running this
+ * — a rotation, a resize, anything that changes the viewport mid-edit — re-frames the move in
+ * progress instead of silently dragging it back to where it started.
  */
 private fun centreOnCrosshair(
     map: MapLibreMap,
-    point: GpsPoint,
+    target: DomainLatLng,
     viewportWidthPx: Float,
     viewportHeightPx: Float,
     insets: MapInsets,
+    onArrived: () -> Unit,
 ) {
-    if (viewportWidthPx <= 0f || viewportHeightPx <= 0f) return
-    val screen = map.projection.toScreenLocation(LatLng(point.lat, point.lng))
+    if (viewportWidthPx <= 0f || viewportHeightPx <= 0f) {
+        onArrived()
+        return
+    }
+    val screen = map.projection.toScreenLocation(LatLng(target.lat, target.lng))
     val crosshair = uncoveredCentre(viewportWidthPx, viewportHeightPx, insets)
     val centre =
         cameraCentreAfterPan(
@@ -105,6 +113,13 @@ private fun centreOnCrosshair(
         CameraUpdateFactory.newLatLng(
             map.projection.fromScreenLocation(PointF(centre.xPx, centre.yPx)),
         ),
+        object : MapLibreMap.CancelableCallback {
+            // Cancelled means the user grabbed the map mid-flight; either way the camera is
+            // theirs from here on.
+            override fun onCancel() = onArrived()
+
+            override fun onFinish() = onArrived()
+        },
     )
 }
 
@@ -137,6 +152,8 @@ fun EditPointsScreen(
             mode = editorMode,
         )
     val revealMarginPx = revealMarginPx(density)
+    // False while the camera is still flying the point to the crosshair on entering edit mode.
+    var crosshairIsTheUsers by remember { mutableStateOf(false) }
     val crosshair =
         uncoveredCentre(
             viewportWidthPx = mapSizePx.width.toFloat(),
@@ -189,15 +206,21 @@ fun EditPointsScreen(
 
     // Entering edit mode puts the point under the crosshair — an explicit, one-per-edit request,
     // not a side effect of selection.
+    //
+    // The crosshair is not read back while that animation is running: its own frames are camera
+    // movement too, and a point the user never dragged would otherwise be committed at a
+    // coordinate rounded through screen pixels rather than at the one it was recorded with.
     LaunchedEffect(uiState.editingPointId, mapRef, mapSizePx) {
+        crosshairIsTheUsers = false
         val map = mapRef ?: return@LaunchedEffect
-        val point = uiState.editingPoint ?: return@LaunchedEffect
+        val target = uiState.pendingLatLng ?: return@LaunchedEffect
         centreOnCrosshair(
             map = map,
-            point = point,
+            target = target,
             viewportWidthPx = mapSizePx.width.toFloat(),
             viewportHeightPx = mapSizePx.height.toFloat(),
             insets = mapInsets,
+            onArrived = { crosshairIsTheUsers = true },
         )
     }
 
@@ -235,7 +258,7 @@ fun EditPointsScreen(
                 title = {
                     Text(
                         stringResource(
-                            if (uiState.isEditing) R.string.message_drag_map_to_move else R.string.label_edit_points,
+                            if (uiState.isEditing) R.string.label_drag_map_to_move else R.string.label_edit_points,
                         ),
                     )
                 },
@@ -285,8 +308,12 @@ fun EditPointsScreen(
                 onMapReady = { mapRef = it },
                 // The composable's whole part in a move: say where the crosshair now is. What
                 // that means for the preview, the ghost and the commit is decided in state.
-                onCameraMove = {
-                    if (uiState.isEditing) {
+                //
+                // The coordinate the callback offers is the viewport's centre, which the
+                // crosshair deliberately is not — chrome covers the map unevenly — so it is
+                // discarded and the crosshair's own position read back through the projection.
+                onCameraMove = { _ ->
+                    if (uiState.isEditing && crosshairIsTheUsers) {
                         mapRef?.let { map ->
                             val here = map.projection.fromScreenLocation(PointF(crosshair.xPx, crosshair.yPx))
                             viewModel.crosshairMovedTo(DomainLatLng(lat = here.latitude, lng = here.longitude))
@@ -469,6 +496,10 @@ private fun Crosshair(modifier: Modifier = Modifier) {
  *
  * Cancel is the only way to undo a move — a bad one is easy to miss, so it is not left to a
  * snackbar the user has four seconds to catch.
+ *
+ * A floating island above the navigation bar, following the control pill it stands in for,
+ * rather than a full-width surface painting under it (ADR-0005 rule 1): there is no sheet in
+ * edit mode for it to sit on, and the map must stay visible right down to the bar.
  */
 @Composable
 private fun EditActionBar(

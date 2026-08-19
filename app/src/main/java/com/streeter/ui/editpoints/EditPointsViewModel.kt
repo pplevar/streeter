@@ -9,6 +9,7 @@ import com.streeter.domain.model.toLatLng
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.work.WalkRecalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -115,11 +116,34 @@ class EditPointsViewModel
         private var traceWasEdited = false
 
         /**
+         * The newest trace write, each chained behind the one before it, so this single job
+         * stands for every write the session has started. [onExit] waits on it: navigation
+         * cancels [viewModelScope] the moment it returns, and a write still in flight would go
+         * with it — taking the user's edit, and leaving the recalculation to run over a trace
+         * that never changed.
+         */
+        private var writes: Job? = null
+
+        /**
          * One undo opportunity per delete, queued rather than overwritten, so a rapid second
          * swipe can't silently strand the first point's undo snackbar.
          */
         private val _undoEvents = Channel<PendingUndo>(Channel.UNLIMITED)
         val undoEvents: Flow<PendingUndo> = _undoEvents.receiveAsFlow()
+
+        /**
+         * Runs [write] after every write already started, and records it as the one to wait for.
+         * Writes to a trace are ordered — a delete and the undo that restores it, above all —
+         * and chaining is what lets [onExit] wait for all of them by waiting for the last.
+         */
+        private fun writeTrace(write: suspend () -> Unit) {
+            val previous = writes
+            writes =
+                viewModelScope.launch {
+                    previous?.join()
+                    write()
+                }
+        }
 
         init {
             viewModelScope.launch {
@@ -184,7 +208,7 @@ class EditPointsViewModel
                 if (successor == null) clearSelection() else selectPoint(successor, SelectionOrigin.STEP)
             }
             traceWasEdited = true
-            viewModelScope.launch {
+            writeTrace {
                 gpsPointRepository.deletePoint(walkId, point.id)
                 _undoEvents.send(PendingUndo(point))
             }
@@ -200,13 +224,14 @@ class EditPointsViewModel
          * an in-flight `viewModelScope.launch` before the DB write and enqueue completed.
          */
         suspend fun onExit() {
+            writes?.join()
             if (!traceWasEdited) return
             walkRecalculator.traceChanged(walkId)
         }
 
         /** Restores the exact point removed by [pendingUndo]. */
         fun undoDelete(pendingUndo: PendingUndo) {
-            viewModelScope.launch {
+            writeTrace {
                 gpsPointRepository.insertPoints(listOf(pendingUndo.point))
             }
         }
@@ -235,15 +260,20 @@ class EditPointsViewModel
         /**
          * Writes the pending coordinate and leaves edit mode, keeping the point selected so the
          * user can step straight on to its neighbour.
+         *
+         * A Done that moved the point nowhere is a Cancel: it writes nothing and leaves the
+         * session no more edited than it found it, so a look at the editor never costs the walk
+         * a recalculation.
          */
         fun commitEdit() {
             val state = _uiState.value
             val pointId = state.editingPointId ?: return
+            val origin = state.editingPoint?.toLatLng()
             val pending = state.pendingLatLng
             _uiState.update { it.copy(editingPointId = null, pendingLatLng = null) }
-            if (pending == null) return
+            if (pending == null || pending == origin) return
             traceWasEdited = true
-            viewModelScope.launch {
+            writeTrace {
                 gpsPointRepository.movePoint(walkId, pointId, pending.lat, pending.lng)
             }
         }

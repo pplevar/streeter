@@ -75,6 +75,9 @@ class EditPointsViewModelTest {
     ) : GpsPointRepository {
         private val state = MutableStateFlow(points)
 
+        /** Every write the repository actually completed, in the order it completed them. */
+        val writesSeen = mutableListOf<String>()
+
         override suspend fun insertPoints(points: List<GpsPoint>) {
             state.update { current ->
                 val byId = current.associateBy { it.id }.toMutableMap()
@@ -107,6 +110,7 @@ class EditPointsViewModelTest {
             state.update { current ->
                 current.map { if (it.walkId == walkId && it.id == pointId) it.copy(lat = lat, lng = lng) else it }
             }
+            writesSeen += "move $pointId to $lat/$lng"
         }
 
         override suspend fun deletePoint(
@@ -114,6 +118,7 @@ class EditPointsViewModelTest {
             pointId: Long,
         ): Int {
             state.update { current -> current.filterNot { it.walkId == walkId && it.id == pointId } }
+            writesSeen += "delete $pointId"
             return state.value.count { it.walkId == walkId && !it.isFiltered }
         }
     }
@@ -135,11 +140,12 @@ class EditPointsViewModelTest {
         points: List<GpsPoint>,
         walkRepository: WalkRepository = FakeWalkRepository(listOf(walk())),
         walkWorkScheduler: FakeWalkWorkScheduler = FakeWalkWorkScheduler(),
+        gpsPointRepository: FakeGpsPointRepository = FakeGpsPointRepository(points),
     ): EditPointsViewModel {
         val savedStateHandle = SavedStateHandle(mapOf("walkId" to 1L))
         return EditPointsViewModel(
             savedStateHandle,
-            FakeGpsPointRepository(points),
+            gpsPointRepository,
             WalkRecalculator(walkRepository, walkWorkScheduler),
         )
     }
@@ -877,5 +883,61 @@ class EditPointsViewModelTest {
             vm.beginEdit()
 
             assertNull(vm.uiState.value.editingPointId)
+        }
+
+    @Test
+    fun `a Done that moved the point nowhere writes nothing and recalculates nothing`() =
+        runTest {
+            // Opening the editor on a point and pressing Done without panning is a look, not an
+            // edit: it must cost the walk no write and no recalculation.
+            val walkRepository = FakeWalkRepository(listOf(walk(status = WalkStatus.COMPLETED)))
+            val scheduler = FakeWalkWorkScheduler()
+            val vm = viewModel(listOf(point(1), point(2), point(3)), walkRepository, scheduler)
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+
+            vm.commitEdit()
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.onExit()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertEquals(listOf(point(1), point(2), point(3)), vm.uiState.value.points)
+            assertEquals(WalkStatus.COMPLETED, walkRepository.getWalkById(1L)?.status)
+            assertTrue(scheduler.calculationEnqueued.isEmpty())
+        }
+
+    @Test
+    fun `leaving the editor waits for a move still being written`() =
+        runTest {
+            // The screen navigates away the moment onExit returns, and that tears down the
+            // ViewModel's scope — a write still in flight would go with it, taking the user's
+            // edit and leaving the recalculation to run over a trace that never changed.
+            val repository = FakeGpsPointRepository(listOf(point(1), point(2), point(3)))
+            val vm = viewModel(listOf(point(1), point(2), point(3)), gpsPointRepository = repository)
+            dispatcher.scheduler.advanceUntilIdle()
+            vm.selectPoint(2L, SelectionOrigin.LIST)
+            vm.beginEdit()
+            vm.crosshairMovedTo(LatLng(51.5, -0.12))
+            vm.commitEdit()
+
+            // Deliberately no advanceUntilIdle before this: the write has been launched and has
+            // not run, so onExit is the only thing that can make it land.
+            vm.onExit()
+
+            assertEquals(listOf("move 2 to 51.5/-0.12"), repository.writesSeen)
+        }
+
+    @Test
+    fun `leaving the editor waits for a deletion still being written`() =
+        runTest {
+            val repository = FakeGpsPointRepository(listOf(point(1), point(2), point(3)))
+            val vm = viewModel(listOf(point(1), point(2), point(3)), gpsPointRepository = repository)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            vm.deletePoint(point(2))
+            vm.onExit()
+
+            assertEquals(listOf("delete 2"), repository.writesSeen)
         }
 }
