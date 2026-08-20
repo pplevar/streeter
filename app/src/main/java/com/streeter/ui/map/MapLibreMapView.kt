@@ -92,7 +92,7 @@ fun MapLibreMapView(
     var mapView by remember { mutableStateOf<MapView?>(null) }
     val plan = mapPlanOf(layers)
     // What each source is already holding, so a recomposition that changed one layer does not
-    // hand the renderer all eight payloads again.
+    // hand the renderer every slot's payload again.
     val applied = remember { mutableMapOf<MapSlot, String>() }
 
     // Every value the map's async callbacks read is tracked the same way, so a callback that
@@ -280,6 +280,29 @@ private fun layersFor(slot: MapSlot): List<Layer> =
                     lineWidth(4f),
                     lineCap("round"),
                     lineJoin("round"),
+                ),
+            )
+        // The trace's uncommitted shape, in the same amber the app already uses for an edit
+        // awaiting a decision, dashed so it reads as provisional against the solid trace under it.
+        MapSlot.TRACE_PREVIEW ->
+            listOf(
+                LineLayer(slot.layerId, slot.sourceId).withProperties(
+                    lineColor("#F59E0B"),
+                    lineWidth(4f),
+                    lineCap("round"),
+                    lineJoin("round"),
+                    lineDasharray(arrayOf(2f, 1.5f)),
+                ),
+            )
+        // A hollow ghost: where the point was, visibly not where it is.
+        MapSlot.EDIT_ORIGIN ->
+            listOf(
+                CircleLayer(slot.layerId, slot.sourceId).withProperties(
+                    circleColor("#FFFFFF"),
+                    circleOpacity(0.35f),
+                    circleRadius(9f),
+                    circleStrokeColor("#64748B"),
+                    circleStrokeWidth(2f),
                 ),
             )
         MapSlot.CURRENT_POSITION ->

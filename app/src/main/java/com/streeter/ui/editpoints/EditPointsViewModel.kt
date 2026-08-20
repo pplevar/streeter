@@ -4,9 +4,12 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.streeter.domain.model.GpsPoint
+import com.streeter.domain.model.LatLng
+import com.streeter.domain.model.toLatLng
 import com.streeter.domain.repository.GpsPointRepository
 import com.streeter.domain.work.WalkRecalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,9 +48,33 @@ data class EditPointsUiState(
     val selectionOrigin: SelectionOrigin? = null,
     val isLoading: Boolean = true,
     val minPointsMessage: Boolean = false,
+    /** The point whose coordinate is being moved, or null when the editor is at rest. */
+    val editingPointId: Long? = null,
+    /**
+     * Where the crosshair currently is — the coordinate [editingPointId] would take on Done.
+     * Nothing is written until then, so this is the whole of an uncommitted move.
+     */
+    val pendingLatLng: LatLng? = null,
 ) {
     val selectedPoint: GpsPoint? get() = points.find { it.id == selectedPointId }
     val canDeleteMore: Boolean get() = points.size > MIN_POINTS
+
+    /** True while the modal coordinate editor is up: the list and the pill give way to it. */
+    val isEditing: Boolean get() = editingPointId != null
+
+    /** The point being moved, still at its stored coordinate — the origin the ghost marks. */
+    val editingPoint: GpsPoint? get() = points.find { it.id == editingPointId }
+
+    /**
+     * The line the live preview draws for the move in progress, or empty when nothing is being
+     * moved. Derived, so the composable's only job is to report where the crosshair is.
+     */
+    val previewLine: List<LatLng>
+        get() {
+            val id = editingPointId ?: return emptyList()
+            val pending = pendingLatLng ?: editingPoint?.toLatLng() ?: return emptyList()
+            return editPreviewLine(points, id, pending)
+        }
     private val selectedIndex: Int? get() = indexOf(selectedPointId)
     val canGoPrevious: Boolean get() = selectedIndex?.let { it > 0 } ?: false
     val canGoNext: Boolean get() = selectedIndex?.let { it < points.size - 1 } ?: false
@@ -80,8 +107,22 @@ class EditPointsViewModel
         private val _uiState = MutableStateFlow(EditPointsUiState())
         val uiState: StateFlow<EditPointsUiState> = _uiState.asStateFlow()
 
-        /** Set once any point is deleted this session; drives the re-match trigger on exit. */
-        private var pointsWereDeleted = false
+        /**
+         * Set once this session changed the trace — a deletion or a committed move. Drives the
+         * re-match trigger on exit: a session of pure corrections changed the trace just as much
+         * as one that deleted, so both must recalculate. An edit that was cancelled wrote
+         * nothing and does not set it.
+         */
+        private var traceWasEdited = false
+
+        /**
+         * The newest trace write, each chained behind the one before it, so this single job
+         * stands for every write the session has started. [onExit] waits on it: navigation
+         * cancels [viewModelScope] the moment it returns, and a write still in flight would go
+         * with it — taking the user's edit, and leaving the recalculation to run over a trace
+         * that never changed.
+         */
+        private var writes: Job? = null
 
         /**
          * One undo opportunity per delete, queued rather than overwritten, so a rapid second
@@ -89,6 +130,20 @@ class EditPointsViewModel
          */
         private val _undoEvents = Channel<PendingUndo>(Channel.UNLIMITED)
         val undoEvents: Flow<PendingUndo> = _undoEvents.receiveAsFlow()
+
+        /**
+         * Runs [write] after every write already started, and records it as the one to wait for.
+         * Writes to a trace are ordered — a delete and the undo that restores it, above all —
+         * and chaining is what lets [onExit] wait for all of them by waiting for the last.
+         */
+        private fun writeTrace(write: suspend () -> Unit) {
+            val previous = writes
+            writes =
+                viewModelScope.launch {
+                    previous?.join()
+                    write()
+                }
+        }
 
         init {
             viewModelScope.launch {
@@ -152,32 +207,83 @@ class EditPointsViewModel
                     }
                 if (successor == null) clearSelection() else selectPoint(successor, SelectionOrigin.STEP)
             }
-            pointsWereDeleted = true
-            viewModelScope.launch {
+            traceWasEdited = true
+            writeTrace {
                 gpsPointRepository.deletePoint(walkId, point.id)
                 _undoEvents.send(PendingUndo(point))
             }
         }
 
         /**
-         * Called when leaving the editor. If any points were deleted this session, the walk's GPS
-         * Trace changed, so its Calculation is stale — hand that to
-         * [com.streeter.domain.work.WalkRecalculator]. No-op if nothing was deleted.
+         * Called when leaving the editor. If the trace changed this session — points deleted,
+         * points moved, or both — its Calculation is stale, so hand that to
+         * [com.streeter.domain.work.WalkRecalculator]. No-op if nothing changed.
          *
          * Suspends rather than firing on [viewModelScope]: the caller navigates away right after
          * this returns, and that navigation tears down this ViewModel's scope, which would cancel
          * an in-flight `viewModelScope.launch` before the DB write and enqueue completed.
          */
         suspend fun onExit() {
-            if (!pointsWereDeleted) return
+            writes?.join()
+            if (!traceWasEdited) return
             walkRecalculator.traceChanged(walkId)
         }
 
         /** Restores the exact point removed by [pendingUndo]. */
         fun undoDelete(pendingUndo: PendingUndo) {
-            viewModelScope.launch {
+            writeTrace {
                 gpsPointRepository.insertPoints(listOf(pendingUndo.point))
             }
+        }
+
+        /**
+         * Enters the modal coordinate editor for the selected point, seeding the pending
+         * coordinate with where the point already is so the preview is drawn from the first
+         * frame rather than after the first pan.
+         *
+         * Deliberately not gated on [EditPointsUiState.canDeleteMore]: moving a point removes
+         * none, so the editor stays open at the minimum-points floor where deletion is blocked.
+         * The asymmetry is the point — do not "fix" it by sharing delete's guard.
+         */
+        fun beginEdit() {
+            val state = _uiState.value
+            val point = state.selectedPoint ?: return
+            _uiState.update { it.copy(editingPointId = point.id, pendingLatLng = point.toLatLng()) }
+        }
+
+        /** Reports where the crosshair now is. Stored points are untouched until [commitEdit]. */
+        fun crosshairMovedTo(latLng: LatLng) {
+            if (_uiState.value.editingPointId == null) return
+            _uiState.update { it.copy(pendingLatLng = latLng) }
+        }
+
+        /**
+         * Writes the pending coordinate and leaves edit mode, keeping the point selected so the
+         * user can step straight on to its neighbour.
+         *
+         * A Done that moved the point nowhere is a Cancel: it writes nothing and leaves the
+         * session no more edited than it found it, so a look at the editor never costs the walk
+         * a recalculation.
+         */
+        fun commitEdit() {
+            val state = _uiState.value
+            val pointId = state.editingPointId ?: return
+            val origin = state.editingPoint?.toLatLng()
+            val pending = state.pendingLatLng
+            _uiState.update { it.copy(editingPointId = null, pendingLatLng = null) }
+            if (pending == null || pending == origin) return
+            traceWasEdited = true
+            writeTrace {
+                gpsPointRepository.movePoint(walkId, pointId, pending.lat, pending.lng)
+            }
+        }
+
+        /**
+         * Leaves edit mode with the point where it started. Nothing was written, so this is a
+         * pure state reset — no undo entry, and no recalculation to account for.
+         */
+        fun cancelEdit() {
+            _uiState.update { it.copy(editingPointId = null, pendingLatLng = null) }
         }
 
         fun dismissMinPointsMessage() {

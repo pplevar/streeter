@@ -42,6 +42,21 @@ object EditorChrome {
     /** Height the prev/delete/next pill and its gap claim above the sheet. */
     val PillInset = PillButtonSize + PillPadding * 2 + PillGap
 
+    /**
+     * Height of each of the Done/Cancel bar's buttons — Material's minimum interactive size,
+     * which `Button` enforces itself, matching [PillButtonSize].
+     */
+    val EditBarButtonSize = 48.dp
+
+    /** Padding inside the Done/Cancel bar, around its buttons. */
+    val EditBarPadding = 12.dp
+
+    /** Gap the Done/Cancel bar keeps above the navigation bar (ADR-0005 rule 4). */
+    val EditBarGap = 16.dp
+
+    /** Height the Done/Cancel bar and its gap claim above the navigation bar. */
+    val EditBarInset = EditBarButtonSize + EditBarPadding * 2 + EditBarGap
+
     /** Height of the top app bar; the status-bar inset is added on top of it. */
     val TopBarHeight = 64.dp
 
@@ -83,11 +98,26 @@ fun sheetMetrics(
     }
 
 /**
- * The map edges the editor's chrome covers when a point is selected, for [panToReveal].
+ * Which of the editor's two layouts is on screen — they cover different map edges, so they
+ * inset the map differently.
+ */
+enum class EditorMode {
+    /** The list, the sheet and the prev/edit/delete/next pill: the editor at rest. */
+    BROWSING,
+
+    /** The modal coordinate editor: sheet and pill gone, a Done/Cancel bar in their place. */
+    EDITING,
+}
+
+/**
+ * The map edges the editor's chrome covers in [mode], for [panToReveal] and [uncoveredCentre].
  *
- * The sheet snaps to peek on every selection, so peek — not the sheet's current height — is
- * what the marker must clear, with the pill above it and the navigation bar below. The top is
- * the status bar plus the app bar drawn over it. Nothing covers the map sideways.
+ * While browsing, the sheet snaps to peek on every selection, so peek — not the sheet's current
+ * height — is what the marker must clear, with the pill above it and the navigation bar below.
+ * Edit mode takes both of those away and puts the Done/Cancel bar there instead, so it is that
+ * bar's height the crosshair is centred against: a mode that hides the sheet must not keep
+ * reserving room for it, or the point would sit visibly high of centre. The top is the status
+ * bar plus the app bar drawn over it, in either mode. Nothing covers the map sideways.
  *
  * The pill counts here. ADR-0005 rule 5 excludes it, but that rule is about the *camera
  * padding* that the since-replaced snap-to-marker behaviour used; ADR-0007, which replaced it,
@@ -98,13 +128,36 @@ fun editorMapInsets(
     statusBarPx: Float,
     navigationBarPx: Float,
     density: Density,
+    mode: EditorMode = EditorMode.BROWSING,
 ): MapInsets =
     with(density) {
+        val chromeAboveNavBar =
+            when (mode) {
+                EditorMode.BROWSING -> EditorChrome.SheetPeekHeight + EditorChrome.PillInset
+                EditorMode.EDITING -> EditorChrome.EditBarInset
+            }
         MapInsets(
             top = statusBarPx + EditorChrome.TopBarHeight.toPx(),
-            bottom = EditorChrome.SheetPeekHeight.toPx() + navigationBarPx + EditorChrome.PillInset.toPx(),
+            bottom = chromeAboveNavBar.toPx() + navigationBarPx,
         )
     }
+
+/**
+ * The middle of the part of the map the user can actually see — where the crosshair sits, and
+ * therefore where entering edit mode must put the point being moved.
+ *
+ * Not the viewport's centre: chrome covers the map unevenly, so the raw centre would place the
+ * point below the middle of what is left.
+ */
+fun uncoveredCentre(
+    viewportWidthPx: Float,
+    viewportHeightPx: Float,
+    insets: MapInsets,
+): ScreenPoint =
+    ScreenPoint(
+        xPx = (insets.left + (viewportWidthPx - insets.right)) / 2f,
+        yPx = (insets.top + (viewportHeightPx - insets.bottom)) / 2f,
+    )
 
 /** A point on the map view, in pixels from its top-left corner. */
 data class ScreenPoint(

@@ -72,6 +72,15 @@ class GpsPointRepositoryTest {
             store[pointId]?.let { if (it.walkId == walkId) store.remove(pointId) }
         }
 
+        override suspend fun updateCoordinate(
+            walkId: Long,
+            pointId: Long,
+            lat: Double,
+            lng: Double,
+        ) {
+            store[pointId]?.let { if (it.walkId == walkId) store[pointId] = it.copy(lat = lat, lng = lng) }
+        }
+
         override suspend fun countUnfilteredForWalk(walkId: Long): Int = store.values.count { it.walkId == walkId && !it.isFiltered }
     }
 
@@ -143,5 +152,45 @@ class GpsPointRepositoryTest {
             // Point 2 belongs to walk 2, so a walk-1 delete request must leave it untouched.
             assertEquals(point(2L, walkId = 2L), dao.store[2L])
             assertEquals(1, remaining)
+        }
+
+    @Test
+    fun `movePoint writes the new coordinate`() =
+        runBlocking {
+            val dao = FakeGpsPointDao(listOf(point(1L), point(2L)))
+
+            GpsPointRepositoryImpl(dao).movePoint(walkId = 1L, pointId = 2L, lat = 51.5, lng = -0.12)
+
+            assertEquals(51.5, dao.store.getValue(2L).lat, 0.0)
+            assertEquals(-0.12, dao.store.getValue(2L).lng, 0.0)
+        }
+
+    @Test
+    fun `movePoint leaves everything but the coordinate as it was`() =
+        runBlocking {
+            // A repositioned observation is still the same observation: same row, same identity,
+            // same moment, same place in the order (see CONTEXT.md, GPS Trace).
+            val before = point(2L).copy(accuracyM = 17f, speedKmh = 4.5f)
+            val dao = FakeGpsPointDao(listOf(point(1L), before))
+
+            GpsPointRepositoryImpl(dao).movePoint(walkId = 1L, pointId = 2L, lat = 51.5, lng = -0.12)
+
+            val after = dao.store.getValue(2L)
+            assertEquals(before.id, after.id)
+            assertEquals(before.timestamp, after.timestamp)
+            assertEquals(before.accuracyM, after.accuracyM, 0f)
+            assertEquals(before.speedKmh, after.speedKmh, 0f)
+            assertEquals(before.isFiltered, after.isFiltered)
+        }
+
+    @Test
+    fun `movePoint does not move a point of the same id under a different walk`() =
+        runBlocking {
+            val dao = FakeGpsPointDao(listOf(point(1L, walkId = 2L)))
+
+            GpsPointRepositoryImpl(dao).movePoint(walkId = 1L, pointId = 1L, lat = 51.5, lng = -0.12)
+
+            assertEquals(0.0, dao.store.getValue(1L).lat, 0.0)
+            assertEquals(0.0, dao.store.getValue(1L).lng, 0.0)
         }
 }

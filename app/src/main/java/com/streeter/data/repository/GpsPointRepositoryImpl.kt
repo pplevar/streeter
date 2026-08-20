@@ -37,6 +37,13 @@ class GpsPointRepositoryImpl
             dao.insertAll(points.map { it.toEntity() })
         }
 
+        override suspend fun movePoint(
+            walkId: Long,
+            pointId: Long,
+            lat: Double,
+            lng: Double,
+        ) = dao.updateCoordinate(walkId, pointId, lat, lng)
+
         override suspend fun deletePoint(
             walkId: Long,
             pointId: Long,

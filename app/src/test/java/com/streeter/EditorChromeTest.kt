@@ -3,11 +3,14 @@ package com.streeter
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.streeter.ui.editpoints.EditorChrome
+import com.streeter.ui.editpoints.EditorMode
+import com.streeter.ui.editpoints.MapInsets
 import com.streeter.ui.editpoints.PointPan
 import com.streeter.ui.editpoints.cameraCentreAfterPan
 import com.streeter.ui.editpoints.editorMapInsets
 import com.streeter.ui.editpoints.revealMarginPx
 import com.streeter.ui.editpoints.sheetMetrics
+import com.streeter.ui.editpoints.uncoveredCentre
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -114,6 +117,67 @@ class EditorChromeTest {
         assertEquals(72f, revealMarginPx(Density(density = 3f)))
     }
 
+    // --- What edit mode covers instead ------------------------------------------------------
+
+    @Test
+    fun `edit mode reserves the Done-Cancel bar instead of the sheet and pill`() {
+        val insets = editorMapInsets(statusBarPx = 0f, navigationBarPx = 96f, density = density, mode = EditorMode.EDITING)
+
+        // 88dp bar + 96px navigation bar. No sheet and no pill: edit mode hides both.
+        assertEquals(176f + 96f, insets.bottom)
+    }
+
+    @Test
+    fun `edit mode leaves the top inset alone — the app bar stays`() {
+        val browsing = editorMapInsets(statusBarPx = 60f, navigationBarPx = 96f, density = density)
+        val editing = editorMapInsets(statusBarPx = 60f, navigationBarPx = 96f, density = density, mode = EditorMode.EDITING)
+
+        assertEquals(browsing.top, editing.top)
+    }
+
+    @Test
+    fun `edit mode frees the map the sheet and pill were covering`() {
+        val browsing = editorMapInsets(statusBarPx = 60f, navigationBarPx = 96f, density = density)
+        val editing = editorMapInsets(statusBarPx = 60f, navigationBarPx = 96f, density = density, mode = EditorMode.EDITING)
+
+        assertTrue(editing.bottom < browsing.bottom)
+    }
+
+    @Test
+    fun `browsing is what the insets describe when no mode is named`() {
+        assertEquals(
+            editorMapInsets(statusBarPx = 60f, navigationBarPx = 96f, density = density, mode = EditorMode.BROWSING),
+            editorMapInsets(statusBarPx = 60f, navigationBarPx = 96f, density = density),
+        )
+    }
+
+    // --- Where the crosshair sits -------------------------------------------------------------
+
+    @Test
+    fun `the crosshair sits in the middle of what the chrome leaves uncovered`() {
+        val centre = uncoveredCentre(1000f, 2000f, MapInsets(top = 200f, bottom = 400f))
+
+        assertEquals(500f, centre.xPx)
+        assertEquals(900f, centre.yPx) // midway between 200 and 1600
+    }
+
+    @Test
+    fun `an uninset map puts the crosshair at the viewport centre`() {
+        val centre = uncoveredCentre(1000f, 2000f, MapInsets())
+
+        assertEquals(500f, centre.xPx)
+        assertEquals(1000f, centre.yPx)
+    }
+
+    @Test
+    fun `the crosshair is above the viewport centre when more chrome sits below than above`() {
+        val insets = editorMapInsets(statusBarPx = 60f, navigationBarPx = 96f, density = density, mode = EditorMode.EDITING)
+
+        val centre = uncoveredCentre(1000f, 2000f, insets)
+
+        assertTrue(centre.yPx < 1000f)
+    }
+
     // --- Turning a pan offset into a camera target -----------------------------------------
 
     @Test
@@ -155,5 +219,19 @@ class EditorChromeTest {
         // EditPointsScreen passes this to TopAppBar as its expanded height, so the bar the user
         // sees and the inset the camera is given cannot drift apart.
         assertEquals(64.dp, EditorChrome.TopBarHeight)
+    }
+
+    @Test
+    fun `the edit-mode bar inset is the height of the bar the screen actually lays out`() {
+        // A row of 48dp buttons with its own padding, sitting a gap above the navigation bar,
+        // and EditPointsScreen lays it out from these same constants.
+        assertEquals(88.dp, EditorChrome.EditBarInset)
+    }
+
+    @Test
+    fun `adding the edit button leaves the pill the height the camera assumes`() {
+        // The pill grew a fourth button sideways, not taller — ADR-0007's reveal logic consumes
+        // this inset, and it must not shift under it.
+        assertEquals(72.dp, EditorChrome.PillInset)
     }
 }

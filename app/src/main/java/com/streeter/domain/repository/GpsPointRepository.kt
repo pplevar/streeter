@@ -33,6 +33,17 @@ interface GpsPointRepository {
     )
 
     /**
+     * Moves [pointId] of [walkId] to ([lat], [lng]). The point keeps its identity, its timestamp
+     * and its place in the trace order — only where it is has changed.
+     */
+    suspend fun movePoint(
+        walkId: Long,
+        pointId: Long,
+        lat: Double,
+        lng: Double,
+    )
+
+    /**
      * Deletes [pointId] from [walkId] and returns the walk's remaining point count, counting
      * only non-Outlier points — the same set [observePointsForWalk] emits.
      */

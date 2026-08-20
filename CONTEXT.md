@@ -9,7 +9,7 @@ The central record — one recording or manually-created journey. A walk is eith
 _Avoid_: trip, route (a walk *has* a route; it is not one).
 
 **GPS Trace**:
-The ordered series of raw GPS observations belonging to a Recorded Walk. The trace, together with walk metadata, is the only walk data that is synchronized to the server.
+The ordered series of GPS observations belonging to a Recorded Walk, as the user has left them — what the recorder observed, minus any observations the user pruned in the points editor, with any the user repositioned standing at their corrected coordinate. A repositioned observation is still an observation: it keeps its identity, its timestamp and its place in the order, and nothing in the data distinguishes it from one the device reported. The trace, together with walk metadata, is the only walk data that is synchronized to the server.
 _Avoid_: track, path.
 
 **Outlier Point**:
@@ -47,7 +47,7 @@ A street is a named road derived from OpenStreetMap data; a section is one span 
 - Each device owns its own **Calculation** results (Map Matching + Coverage). These are local projections of the synced trace and are recomputed independently per device.
 - Because Calculation is local and reproducible, **Sync never waits for Calculation**, and a freshly-synced walk on another device shows an estimated distance until that device recomputes.
 - **Outlier Points are excluded at the data seam**, not per screen: every read that backs a trace — drawing, Calculation, Sync, the points editor's list and its minimum-points floor — is over the same non-Outlier set, so counts on screen always match rows on screen.
-- **Selecting a point never navigates the map**; the camera moves only to reveal a selection the user could not otherwise see, and never changes zoom. See ADR 0007.
+- **Selecting a point never navigates the map**; the camera moves only to reveal a selection the user could not otherwise see, and never changes zoom. See ADR 0007. **Entering the coordinate editor does** — the user asked for it by pressing a button, and the point they are about to move must sit under the crosshair. Zoom is still theirs.
 - The recording screen's past-walks layer draws **GPS Traces, not Coverage** — so it appears the moment a walk ends, but drifts off-street and will not agree with the app's Coverage numbers. Deliberate; see ADR 0006.
 
 ## Example dialogue

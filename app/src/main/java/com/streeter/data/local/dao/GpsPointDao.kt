@@ -39,6 +39,21 @@ interface GpsPointDao {
     )
     suspend fun getPointsExcludingWalk(excludeWalkId: Long): List<GpsPointEntity>
 
+    /**
+     * Moves one point to a new coordinate, scoped by walk exactly as [deleteById] is.
+     *
+     * Only `lat`/`lng` change: a repositioned observation keeps its id, its timestamp, its
+     * accuracy and its place in the order, and nothing in the row records that it was moved
+     * (see CONTEXT.md, **GPS Trace**).
+     */
+    @Query("UPDATE gps_points SET lat = :lat, lng = :lng WHERE id = :pointId AND walkId = :walkId")
+    suspend fun updateCoordinate(
+        walkId: Long,
+        pointId: Long,
+        lat: Double,
+        lng: Double,
+    )
+
     @Query("DELETE FROM gps_points WHERE walkId = :walkId")
     suspend fun deleteByWalkId(walkId: Long)
 

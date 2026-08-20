@@ -29,6 +29,9 @@
     <string name="label_previous_point">Previous point</string>
     <string name="label_next_point">Next point</string>
     <string name="label_cancel">Cancel</string>
+    <string name="label_done">Done</string>
+    <string name="label_move_point">Move point</string>
+    <string name="label_drag_map_to_move">Drag the map to move the point</string>
     <string name="label_confirm">Confirm</string>
     <string name="label_processing">Processing route…</string>
     <string name="label_manual_badge">Manual</string>
